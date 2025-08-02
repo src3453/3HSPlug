@@ -4,6 +4,7 @@
 #include <memory>
 #include <mutex>
 #include <cstdint>
+#include <chrono>
 #include <JuceHeader.h>
 #include "DrumKeymapManager.h"
 #include "s3hs_core/sound.cpp"
@@ -28,6 +29,8 @@ struct DrumPcmChannelState {
     uint64_t lastUsedTick = 0;
     uint32_t pcmAddr = 0;
     uint32_t sampleRate = 0;
+    int pitchBendValue = 0x2000; // 14bit ピッチベンド値 (0x0000-0x3FFF, センター: 0x2000)
+    float pitchBendRange = 2.0f; // ピッチベンドレンジ（半音単位）
 };
 
 // デバッグ文字列取得
@@ -100,6 +103,14 @@ public:
 
     uint64_t getCurrentTick() const;
 
+    // パフォーマンス測定
+    double getAudioProcessingTimeMs() const { return audioProcessingTimeMs; }
+    double getCpuUsagePercent() const { return cpuUsagePercent; }
+    double getMidiProcessingTimeMs() const { return midiProcessingTimeMs; }
+    double getSynthProcessingTimeMs() const { return synthProcessingTimeMs; }
+    std::vector<std::vector<float>> getChipAudioDataL(int chip) const;
+    std::vector<std::vector<float>> getChipAudioDataR(int chip) const;
+
     // デバッグ用: ボイス割り当て状況取得
     struct VoiceSlot {
         int noteNumber = -1;   // 割り当てノート番号（未使用時は-1）
@@ -157,10 +168,25 @@ private:
     std::array<int, 16> channelFineTune{};   // -100～+100セント
     std::array<int, 16> channelCoarseTune{}; // -6400～+6300セント
 
+    std::vector<std::vector<float>> displayBufferL; // 各チャンネルの左波形データ
+    std::vector<std::vector<float>> displayBufferR; // 各チャンネルの右波形データ
+
     // 各MIDIチャンネル・CC番号ごとの値 [1-16][0-127]（全要素127で初期化）
     uint8_t channelCC[17][128] = {{127}};
     
     // Hold/Sustain Pedal状態管理
     std::array<bool, 16> channelSustainPedal{};  // CC#64の状態
     std::array<std::vector<int>, 16> heldNotes;  // ペダル押下中のノート番号リスト
+
+    // パフォーマンス測定
+    mutable std::atomic<double> audioProcessingTimeMs{0.0};
+    mutable std::atomic<double> cpuUsagePercent{0.0};
+    mutable std::atomic<double> midiProcessingTimeMs{0.0};
+    mutable std::atomic<double> synthProcessingTimeMs{0.0};
+    std::chrono::high_resolution_clock::time_point lastProcessTime;
+    double movingAverageProcessingTime = 0.0;
+    double movingAverageCpuUsage = 0.0;
+    double movingAverageMidiTime = 0.0;
+    double movingAverageSynthTime = 0.0;
+    static constexpr double SMOOTHING_FACTOR = 0.1; // 移動平均のスムージング係数
 };

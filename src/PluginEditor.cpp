@@ -9,37 +9,20 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-#define y true
-#define _ false
-// モジュレーションモードに応じて、音量に応じてボリュームレジスタをスケーリングすべきかを定義する (true: スケーリングする, false: しない)
-// 可読性のために、y: true, _: false としている
-bool volumeScalingMap[13][8] = {
-    {y,y,y,y,y,y,y,y}, //  0: Additive
-    {y,y,y,y,_,_,_,_}, //  1: 4x2OP FM
-    {y,y,y,y,_,_,_,_}, //  2: 4x2 RingMod
-    {y,y,_,_,_,_,_,_}, //  3: 2x4OP FM
-    {y,_,_,_,_,_,_,_}, //  4: 8OP FM
-    {y,y,_,_,y,y,_,_}, //  5: 4OP FM x2
-    {y,_,y,_,y,_,y,_}, //  6: 2OP FM x4
-    {y,_,_,_,_,_,_,_}, //  7: 4OP FMxRM x2
-    {y,y,_,_,_,_,_,_}, //  8: 2x4 RingMod
-    {y,_,_,_,_,_,_,_}, //  9: 2OP FMxRM x4
-    {y,y,y,y,_,_,_,_}, // 10: 2OP DirectPhase
-    {y,y,_,_,_,_,_,_}, // 11: 4OP DirectPhase
-    {y,_,_,_,_,_,_,_}, // 12: 8OP DirectPhase
-};
-#undef y // 一時的なマクロ定義を削除
-#undef _
+
 
 //==============================================================================
 _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor (_3HSPlugAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
-    // Make sure that before the constructor has finished, you've set the
-    // editor's size to whatever you need it to be.
-    setSize (600, 800);
+    // オシロスコープコンポーネントを作成
+    //multiOscilloscope = std::make_unique<MultiOscilloscopeComponent>();
+    //addAndMakeVisible(*multiOscilloscope);
+
+    // ウィンドウサイズを横側に拡張（既存の情報表示 + オシロスコープ）
+    setSize (600, 950);
     setResizable(true, true);
-    setResizeLimits(300, 200, 1920, 1080);
+    setResizeLimits(500, 600, 2560, 1440); // 最小サイズも調整
     startTimerHz(60); // 60HzでtimerCallback()を呼ぶ
     // 時間経過による減衰計算
     currentDisplayTick = 0;
@@ -160,15 +143,142 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawFittedText(drumInfoText, barStartX + barWidthMax + 10, y, 450, barHeight, juce::Justification::centredLeft, 1);
     }
 
+    // CPU使用率メーターとパフォーマンス情報の表示
+    int performanceStartY = drumBarStartY + static_cast<int>(drumInfos.size()) * (barHeight + barSpacing) + 30;
+    
+    // 処理時間の取得
+    double totalCpuUsage = audioProcessor.getCpuUsagePercent();
+    double totalProcessingTime = audioProcessor.getAudioProcessingTimeMs();
+    double midiProcessingTime = audioProcessor.getMidiProcessingTimeMs();
+    double synthProcessingTime = audioProcessor.getSynthProcessingTimeMs();
+    
+    // パフォーマンスモニタータイトル
+    g.setColour(juce::Colours::white);
+    g.setFont(juce::Font(16.0f, juce::Font::bold));
+    g.drawFittedText("Performance Monitor", barStartX, performanceStartY, 200, 20, juce::Justification::centredLeft, 1);
+    
+    // 全体CPU使用率バー
+    int cpuBarY = performanceStartY + 25;
+    int cpuBarWidth = 300;
+    int cpuBarHeight = 18;
+    
+    g.setColour(juce::Colours::darkgrey);
+    g.fillRect(barStartX, cpuBarY, cpuBarWidth, cpuBarHeight);
+    
+    // CPU使用率に応じた色分け（緑→黄→赤）
+    juce::Colour cpuBarColour;
+    if (totalCpuUsage < 50.0) {
+        cpuBarColour = juce::Colours::limegreen;
+    } else if (totalCpuUsage < 80.0) {
+        cpuBarColour = juce::Colours::yellow;
+    } else {
+        cpuBarColour = juce::Colours::red;
+    }
+    
+    g.setColour(cpuBarColour);
+    int totalFillWidth = static_cast<int>((totalCpuUsage / 100.0) * cpuBarWidth);
+    g.fillRect(barStartX, cpuBarY, totalFillWidth, cpuBarHeight);
+    
+    // 全体CPU使用率テキスト
+    g.setColour(juce::Colours::white);
+    g.setFont(juce::Font(14.0f));
+    juce::String cpuText = "Total CPU: " + juce::String(totalCpuUsage, 1) + "%";
+    g.drawFittedText(cpuText, barStartX + cpuBarWidth + 10, cpuBarY, 120, cpuBarHeight, juce::Justification::centredLeft, 1);
+    
+    // MIDI処理時間バー
+    int midiBarY = cpuBarY + cpuBarHeight + 5;
+    double bufferDurationMs = (audioProcessor.getBlockSize() / audioProcessor.getSampleRate() * 1000.0);
+    double midiCpuUsage = (midiProcessingTime / bufferDurationMs) * 100.0;
+    
+    g.setColour(juce::Colours::darkgrey);
+    g.fillRect(barStartX, midiBarY, cpuBarWidth, cpuBarHeight);
+    
+    g.setColour(juce::Colours::cyan);
+    int midiFillWidth = static_cast<int>((midiCpuUsage / 100.0) * cpuBarWidth);
+    g.fillRect(barStartX, midiBarY, midiFillWidth, cpuBarHeight);
+    
+    g.setColour(juce::Colours::white);
+    juce::String midiText = "MIDI: " + juce::String(midiCpuUsage, 1) + "%";
+    g.drawFittedText(midiText, barStartX + cpuBarWidth + 10, midiBarY, 120, cpuBarHeight, juce::Justification::centredLeft, 1);
+    
+    // 音声合成処理時間バー
+    int synthBarY = midiBarY + cpuBarHeight + 5;
+    double synthCpuUsage = (synthProcessingTime / bufferDurationMs) * 100.0;
+    
+    g.setColour(juce::Colours::darkgrey);
+    g.fillRect(barStartX, synthBarY, cpuBarWidth, cpuBarHeight);
+    
+    g.setColour(juce::Colours::orange);
+    int synthFillWidth = static_cast<int>((synthCpuUsage / 100.0) * cpuBarWidth);
+    g.fillRect(barStartX, synthBarY, synthFillWidth, cpuBarHeight);
+    
+    g.setColour(juce::Colours::white);
+    juce::String synthText = "Synth: " + juce::String(synthCpuUsage, 1) + "%";
+    g.drawFittedText(synthText, barStartX + cpuBarWidth + 10, synthBarY, 120, cpuBarHeight, juce::Justification::centredLeft, 1);
+    
+    // 処理時間詳細表示
+    int timeTextY = synthBarY + cpuBarHeight + 10;
+    juce::String timeText = "Total: " + juce::String(totalProcessingTime, 2) + " ms / " + juce::String(bufferDurationMs, 2) + " ms";
+    g.drawFittedText(timeText, barStartX, timeTextY, 400, 16, juce::Justification::centredLeft, 1);
+    
+    int midiTimeTextY = timeTextY + 18;
+    juce::String midiTimeText = "MIDI: " + juce::String(midiProcessingTime, 3) + " ms, Synth: " + juce::String(synthProcessingTime, 3) + " ms";
+    g.drawFittedText(midiTimeText, barStartX, midiTimeTextY, 400, 16, juce::Justification::centredLeft, 1);
+    
+    // サンプルレート情報
+    int sampleRateTextY = midiTimeTextY + 20;
+    juce::String sampleRateText = "Sample Rate: " + juce::String(audioProcessor.getSampleRate(), 0) + " Hz";
+    g.drawFittedText(sampleRateText, barStartX, sampleRateTextY, 300, 16, juce::Justification::centredLeft, 1);
+    
+    // バッファサイズ情報
+    int bufferSizeTextY = sampleRateTextY + 18;
+    juce::String bufferText = "Buffer Size: " + juce::String(static_cast<int>(audioProcessor.getBlockSize())) + " samples";
+    g.drawFittedText(bufferText, barStartX, bufferSizeTextY, 300, 16, juce::Justification::centredLeft, 1);
+
 }
 
 void _3HSPlugAudioProcessorEditor::resized()
 {
-    // This is generally where you'll want to lay out the positions of any
-    // subcomponents in your editor..
+    //auto bounds = getLocalBounds();
+    
+    // 左側600pxを既存のGUI用に確保
+    //auto leftPanel = bounds.removeFromLeft(600);
+    
+    // 右側にオシロスコープを配置
+    //if (multiOscilloscope != nullptr) {
+    //    multiOscilloscope->setBounds(bounds.reduced(5));
+    //}
 }
 
 void _3HSPlugAudioProcessorEditor::timerCallback()
 {
+    // 既存のGUI要素を再描画
     repaint();
+    
+    // オシロスコープにオーディオデータを送信
+    //if (multiOscilloscope != nullptr) {
+    //    updateOscilloscopeData();
+    //}
 }
+
+/*
+void _3HSPlugAudioProcessorEditor::updateOscilloscopeData()
+{
+    // 各チップからオーディオデータを取得してオシロスコープに送信
+    for (int chip = 0; chip < audioProcessor.getNumChips(); ++chip) {
+        auto audioDataL = audioProcessor.getChipAudioDataL(chip);
+        auto audioDataR = audioProcessor.getChipAudioDataR(chip);
+
+        // 各チャンネルのデータを更新
+        for (int channel = 0; channel < 12; ++channel) {
+            if (audioDataL.size() >= 2 &&
+                channel < static_cast<int>(audioDataL[0].size()) &&
+                channel < static_cast<int>(audioDataR[1].size())) {
+
+                multiOscilloscope->updateChannelData(chip, channel,
+                                                   audioDataL[channel],
+                                                   audioDataR[channel]);
+            }
+        }
+    }
+}*/

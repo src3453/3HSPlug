@@ -117,6 +117,13 @@ _3HSPlugAudioProcessor::_3HSPlugAudioProcessor()
         numChips = 2; // 例: 2チップ構成
         s3hsSounds.resize(numChips);
         voiceSlots.resize(numChips * numVoices);
+        displayBufferL.resize(numChips*12);
+        displayBufferR.resize(numChips*12);
+        # define DISPLAY_BUFFER_SIZE 1024 
+        for (int i = 0; i < numChips*12; ++i) {
+            displayBufferL[i].resize(DISPLAY_BUFFER_SIZE);
+            displayBufferR[i].resize(DISPLAY_BUFFER_SIZE);
+        }
         voiceMutexes.clear();
         for (int i = 0; i < numChips; ++i) {
             voiceMutexes.emplace_back(std::make_unique<std::mutex>());
@@ -262,6 +269,10 @@ bool _3HSPlugAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
 
 void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
+    // パフォーマンス測定開始
+    auto processStartTime = std::chrono::high_resolution_clock::now();
+    auto midiStartTime = processStartTime;
+    
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
@@ -513,7 +524,10 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         v.volume = vol;
                         int baseAddr = 0x400000 + 0x40 * vIdx;
                         int bank = (baseAddr - 0x400000) / 0x40;
-                        s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x10, vol);
+                        auto regs = PatchBank[currentProgram[v.midiChannel-1]].toRegValues(vol);
+                        for (size_t i = 0x10; i < 0x10; ++i) {
+                        s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + static_cast<int>(i), regs[i]);
+                        }
                             // パンCC受信時は即時パン反映
                         if (msg.getControllerNumber() == 10) {
                             uint8 panCC = msg.getControllerValue();
@@ -546,7 +560,11 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 if (msg.getControllerNumber() == 6) {
                     if (channelRpnMsb[ch-1] == 0 && channelRpnLsb[ch-1] == 0) {
                         channelPitchBendRange[ch-1] = msg.getControllerValue();
-                        printf("[GM] Pitch Bend Range Set: %d (ch %d)\n", channelPitchBendRange[ch-1], ch);
+                        if (gsDrumChannels.find(ch) != gsDrumChannels.end() || ch == 10) {
+                            printf("[DrumPCM] Pitch Bend Range Set: %d (drum ch %d)\n", channelPitchBendRange[ch-1], ch);
+                        } else {
+                            printf("[GM] Pitch Bend Range Set: %d (ch %d)\n", channelPitchBendRange[ch-1], ch);
+                        }
                         channelRpnMsb[ch-1] = 127;
                         channelRpnLsb[ch-1] = 127;
                     } else if (channelRpnMsb[ch-1] == 0 && channelRpnLsb[ch-1] == 1) {
@@ -606,6 +624,39 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x01, freqInt & 0xFF);
                 }
             }
+            
+            // --- ドラムPCMピッチベンド処理 ---
+            // ドラムチャンネルの全アクティブPCMチャンネルにピッチベンドを適用
+            if (gsDrumChannels.find(ch) != gsDrumChannels.end() || ch == 10) {
+                int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2;
+                int bend = (ch >= 1 && ch <= 16) ? channelPitchBend[ch - 1] : 0;
+                
+                for (int i = 0; i < static_cast<int>(drumPcmChannelStates.size()); ++i) {
+                    auto& drumState = drumPcmChannelStates[i];
+                    if (drumState.inUse && drumState.midiChannel == ch) {
+                        // ピッチベンド値を構造体に保存
+                        drumState.pitchBendValue = bend + 8192; // 0x0000-0x3FFF形式に変換
+                        drumState.pitchBendRange = static_cast<float>(bendRange);
+                        
+                        // 元のサンプルレートにピッチベンドを適用
+                        float bendSemis = bendRange * (static_cast<float>(bend) / 8192.0f);
+                        float pitchRatio = std::pow(2.0f, bendSemis / 12.0f);
+                        
+                        // 新しい周波数を計算
+                        float modifiedSampleRate = drumState.sampleRate * pitchRatio;
+                        int pcmFreq = static_cast<int>(std::floor(modifiedSampleRate));
+                        
+                        // S3HSレジスタに周波数を設定
+                        int chip = i / 4;
+                        int pcmChannel = i % 4;
+                        s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x00, (pcmFreq >> 8) & 0xFF);
+                        s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x01, pcmFreq & 0xFF);
+                        
+                        printf("[DrumPCM] Pitch bend applied: CH%d PCM%d, bend=%d, ratio=%.3f, freq=%d\n",
+                               ch, i, bend, pitchRatio, pcmFreq);
+                    }
+                }
+            }
         }
         // プログラムチェンジ処理
         if (msg.isProgramChange())
@@ -628,7 +679,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             // ドラムチャンネル（例: ch==10）かつキーマップ登録済みノートの場合
             // ドラムチャンネルかつキーマップ登録済みノートはFM音源処理を完全スキップ
             if (gsDrumChannels.find(ch) != gsDrumChannels.end() || ch == 10) {
-                auto info = drumKeymapManager.getSampleInfo(ch, note);
+                auto info = drumKeymapManager.getSampleInfo(10, note);
                 if (info.pcmIndex != -1 && info.sampleRate != -1 && info.pcmLength != -1) {
                     // PCM RAMアドレス取得
                     uint32_t pcmAddr_Start = info.pcmIndex;
@@ -669,8 +720,13 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     // PCM RAMアドレスをS3HS音源に設定（例: regwtやram_pokeでpcm_addr[pcmChannel]等を設定）
                     // s3hsSounds[0].ram_poke(..., ..., pcmAddr);
 
-                    // PCM周波数レジスタ設定
-                    int pcmFreq = static_cast<int>(std::floor(info.sampleRate / 32.0));
+                    // PCM周波数レジスタ設定（ピッチベンド適用）
+                    int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2;
+                    int bend = (ch >= 1 && ch <= 16) ? channelPitchBend[ch - 1] : 0;
+                    float bendSemis = bendRange * (static_cast<float>(bend) / 8192.0f);
+                    float pitchRatio = std::pow(2.0f, bendSemis / 12.0f);
+                    float modifiedSampleRate = info.sampleRate * pitchRatio;
+                    int pcmFreq = static_cast<int>(std::floor(modifiedSampleRate / 32.0));
                     s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x00, (pcmFreq >> 8) & 0xFF);
                     s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x01, pcmFreq & 0xFF);
                     
@@ -711,6 +767,8 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         drumState.lastUsedTick = currentTick;
                         drumState.pcmAddr = pcmAddr_Start;
                         drumState.sampleRate = info.sampleRate;
+                        drumState.pitchBendValue = bend + 8192; // 0x0000-0x3FFF形式で保存
+                        drumState.pitchBendRange = static_cast<float>(bendRange);
                     }
                     
                     //printf("Drum Note on: note %d, chip %d, pcmChannel %d, globalChannel %d, pcmAddr %d-%d\n",
@@ -824,14 +882,12 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
                     // パッチ適用: PatchBank[currentProgram]のtoRegValues()で得たregValuesをレジスタに書き込む
                     // Patch.keyShiftはすでに上で取得済み
-                    auto regs = patch.toRegValues();
+                    // volumeScalingMapに応じてuint8_t volでスケーリングされたレジスタ値を取得
+                    auto regs = patch.toRegValues(vol);
                     int bank = (baseAddr - 0x400000) / 0x40;
                     for (size_t i = 0; i < regs.size(); ++i) {
                         s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + static_cast<int>(i), regs[i]);
                     }
-
-                    bank = (baseAddr - 0x400000) / 0x40;
-                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x10, vol);
 
                     // パン設定（CC#10, 0-127, デフォルト64中心）
                     uint8 panCC = this->channelCC[ch][10];
@@ -895,7 +951,15 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         }
     
     }
+    
+    // MIDI処理時間測定終了
+    auto midiEndTime = std::chrono::high_resolution_clock::now();
+    auto midiDuration = std::chrono::duration_cast<std::chrono::microseconds>(midiEndTime - midiStartTime);
+    double midiTimeMs = midiDuration.count() / 1000.0;
 
+    // 音声合成処理時間測定開始
+    auto synthStartTime = std::chrono::high_resolution_clock::now();
+    
     // 音声生成
     // 各チップの出力を合成
     std::vector<std::vector<std::vector<std::vector<float>>>> allFrames(numChips);
@@ -907,6 +971,22 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     for (int i = 0; i < buffer.getNumSamples(); ++i)
     {
+        
+        for (int chip = 0; chip < numChips; ++chip) {
+            // 各チップの出力を加算
+            
+            /*for (int ch = 0; ch < 12; ++ch) { // 0-12までのフレーム
+                int flat = chip * 12 + ch; // チップとチャンネルのフラットインデックス
+                displayBufferL[flat].push_back(allFrames[chip][0][ch][i]);
+                displayBufferR[flat].push_back(allFrames[chip][1][ch][i]);
+                if (displayBufferL[flat].size() > DISPLAY_BUFFER_SIZE) {
+                    displayBufferL[flat].erase(displayBufferL[flat].begin());
+                    displayBufferR[flat].erase(displayBufferR[flat].begin());
+                }
+            }*/
+                    
+                    
+        }
         float sumL = 0.0f, sumR = 0.0f;
         for (int chip = 0; chip < numChips; ++chip) {
             sumL += allFrames[chip][0][12][i]/1.5f;
@@ -943,7 +1023,77 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         // ..do something to the data...
     }
     currentTick += buffer.getNumSamples(); // 現在のtickカウントを更新
+    
+    // 音声合成処理時間測定終了
+    auto synthEndTime = std::chrono::high_resolution_clock::now();
+    auto synthDuration = std::chrono::duration_cast<std::chrono::microseconds>(synthEndTime - synthStartTime);
+    double synthTimeMs = synthDuration.count() / 1000.0;
+    
+    // パフォーマンス測定終了
+    auto processEndTime = std::chrono::high_resolution_clock::now();
+    auto processDuration = std::chrono::duration_cast<std::chrono::microseconds>(processEndTime - processStartTime);
+    double processingTimeMs = processDuration.count() / 1000.0;
+    
+    // CPU使用率計算（処理時間 / バッファ時間）
+    double bufferDurationMs = (buffer.getNumSamples() * 1000.0) / getSampleRate();
+    double cpuUsage = (processingTimeMs / bufferDurationMs) * 100.0;
+    double midiCpuUsage = (midiTimeMs / bufferDurationMs) * 100.0;
+    double synthCpuUsage = (synthTimeMs / bufferDurationMs) * 100.0;
+    
+    // 移動平均でスムージング
+    movingAverageProcessingTime = (1.0 - SMOOTHING_FACTOR) * movingAverageProcessingTime + SMOOTHING_FACTOR * processingTimeMs;
+    movingAverageCpuUsage = (1.0 - SMOOTHING_FACTOR) * movingAverageCpuUsage + SMOOTHING_FACTOR * cpuUsage;
+    movingAverageMidiTime = (1.0 - SMOOTHING_FACTOR) * movingAverageMidiTime + SMOOTHING_FACTOR * midiTimeMs;
+    movingAverageSynthTime = (1.0 - SMOOTHING_FACTOR) * movingAverageSynthTime + SMOOTHING_FACTOR * synthTimeMs;
+    
+    // アトミック変数に保存
+    audioProcessingTimeMs.store(movingAverageProcessingTime);
+    cpuUsagePercent.store(movingAverageCpuUsage);
+    midiProcessingTimeMs.store(movingAverageMidiTime);
+    synthProcessingTimeMs.store(movingAverageSynthTime);
+    
+    lastProcessTime = processEndTime;
 }
+
+std::vector<std::vector<float>> _3HSPlugAudioProcessor::getChipAudioDataL(int chip) const
+{
+    if (chip < 0 || chip >= displayBufferL.size())
+        return {};
+    std::vector<std::vector<float>> slicedData;
+
+    // flat index に基づいて、切り出す (0-11, 12-23, ...)
+    for (int i = 0; i < 12; ++i) {
+        int flatIndex = chip * 12 + i;
+        if (flatIndex < displayBufferL.size()) {
+            slicedData.push_back(displayBufferL[flatIndex]);
+        } else {
+            slicedData.push_back(std::vector<float>()); // 空のベクターを追加
+        }
+    }
+
+
+    return slicedData;
+}
+
+std::vector<std::vector<float>> _3HSPlugAudioProcessor::getChipAudioDataR(int chip) const
+{
+    if (chip < 0 || chip >= displayBufferR.size())
+        return {};
+    std::vector<std::vector<float>> slicedData;
+
+    // flat index に基づいて、切り出す (0-11, 12-23, ...)
+    for (int i = 0; i < 12; ++i) {
+        int flatIndex = chip * 12 + i;
+        if (flatIndex < displayBufferR.size()) {
+            slicedData.push_back(displayBufferR[flatIndex]);
+        } else {
+            slicedData.push_back(std::vector<float>()); // 空のベクターを追加
+        }
+    }
+
+    return slicedData;
+}
+
 
 //==============================================================================
 bool _3HSPlugAudioProcessor::hasEditor() const

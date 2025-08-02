@@ -58,7 +58,7 @@ public:
     };
     
     float S3HS_SAMPLE_FREQ = 48000;
-    #define S3HS_MASTER_CLOCK (48000 * 2.0) // 96kHz
+    #define S3HS_MASTER_CLOCK (48000 * 4.0) // 192kHz
     #define SINTABLE_LENGTH 256
     #define PHASE_RESOLUTION 16
     #define DMA_BUFFER_SIZE 4096
@@ -380,7 +380,7 @@ public:
                 #undef fmod
                 
                 val -= 128;
-                float omega, alpha, a0, a1, a2, b0, b1, b2;
+                /*float omega, alpha, a0, a1, a2, b0, b1, b2;
                 switch (regwt[ch*48+4])
                 {
                 case 0:
@@ -439,14 +439,17 @@ public:
                 in2[ch]  = in1[ch];
                 in1[ch]  = val; 
                 out2[ch] = out1[ch];     
-                out1[ch] = output; 
-                if (regwt[ch*48+5] == 0) {
+                out1[ch] = output; */
+                //if (regwt[ch*48+5] == 0) {
                     result[ch+8] += (float)(val)*255*vt;
-                } else {
-                    result[ch+8] += std::min(std::max((float)output*255*vt,-32768.0f),32767.0f);
-                }
+                //} else {
+                //    result[ch+8] += std::min(std::max((float)output*255*vt,-32768.0f),32767.0f);
+                //}
                 //result[ch+8] += (float)(val)*255*vt;
+
+                // for 3HSPlug: omitted filter processing
             }
+            
             
             for(int ch=0; ch<12; ch++) {
                 int panL, panR;

@@ -10,6 +10,7 @@
 
 #include <JuceHeader.h>  // JUCEヘッダーファイルはビルド時に生成されるので、このIntelliSenseエラーは無視する
 #include "PluginProcessor.h"
+//#include "OscilloscopeComponent.h"
 
 //==============================================================================
 /**
@@ -31,6 +32,12 @@ private:
 
     void timerCallback() override;
     uint64_t currentDisplayTick = 0; // 時間経過による減衰計算用
+
+    // オシロスコープコンポーネント
+    //std::unique_ptr<MultiOscilloscopeComponent> multiOscilloscope;
+    
+    // オシロスコープデータ更新メソッド
+    //void updateOscilloscopeData();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (_3HSPlugAudioProcessorEditor)
 };

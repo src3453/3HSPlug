@@ -2,6 +2,28 @@
 
 #include "PatchBankData.h"
 
+#define y true
+#define _ false
+// モジュレーションモードに応じて、音量に応じてボリュームレジスタをスケーリングすべきかを定義する (true: スケーリングする, false: しない)
+// 可読性のために、y: true, _: false としている
+bool volumeScalingMap[13][8] = {
+    {y,y,y,y,y,y,y,y}, //  0: Additive
+    {y,y,y,y,_,_,_,_}, //  1: 4x2OP FM
+    {y,y,y,y,_,_,_,_}, //  2: 4x2 RingMod
+    {y,y,_,_,_,_,_,_}, //  3: 2x4OP FM
+    {y,_,_,_,_,_,_,_}, //  4: 8OP FM
+    {y,y,_,_,y,y,_,_}, //  5: 4OP FM x2
+    {y,_,y,_,y,_,y,_}, //  6: 2OP FM x4
+    {y,_,_,_,_,_,_,_}, //  7: 4OP FMxRM x2
+    {y,y,_,_,_,_,_,_}, //  8: 2x4 RingMod
+    {y,_,_,_,_,_,_,_}, //  9: 2OP FMxRM x4
+    {y,y,y,y,_,_,_,_}, // 10: 2OP DirectPhase
+    {y,y,_,_,_,_,_,_}, // 11: 4OP DirectPhase
+    {y,_,_,_,_,_,_,_}, // 12: 8OP DirectPhase
+};
+#undef y // 一時的なマクロ定義を削除
+#undef _ // 一時的なマクロ定義を削除
+
 /*
 PatchBankの初期化と、プログラム番号に該当しない場合のフォールバック取得
 パッチ番号はMIDIプログラム番号によって決定される。GM準拠。
@@ -34,6 +56,18 @@ void initializePatchBank() {
     // frequency, attack, decay, sustain, release, volume, waveform
     PatchBank[8].operators[0] = { 0, 0, 64, 0, 32, 255, 0 };
     PatchBank[8].operators[1] = { 0x5000, 0, 4, 64, 32, 8, 0 };
+
+    // 10: Music Box
+    PatchBank[10].defined = true;
+    PatchBank[10].modmode = 1;
+    PatchBank[10].feedback = 0x80;
+    PatchBank[10].keyShift = 0;
+    // frequency, attack, decay, sustain, release, volume, waveform
+    PatchBank[10].operators[0] = { 0x0000, 0, 64, 0, 0, 255, 0 }; 
+    PatchBank[10].operators[1] = { 0x4000, 0, 50, 0, 4, 128, 0 };
+    PatchBank[10].operators[2] = { 0x1000, 0,  2, 0, 4,  32, 0 };
+    PatchBank[10].operators[4] = { 0x8000, 0, 32, 0, 0,   4, 0 };
+
 
     // 11: Vibraphone
     PatchBank[11].defined = true;
@@ -99,6 +133,29 @@ void initializePatchBank() {
     PatchBank[37].operators[1] = { 0x0800, 0, 64, 0, 4, 46, 0 };
     PatchBank[37].operators[2] = { 0x9000, 0, 8, 128, 4, 3, 1 };
 
+    // 38: Synth Bass 1
+    PatchBank[38].defined = true;
+    PatchBank[38].modmode = 4;
+    PatchBank[38].feedback = 0x88;
+    // frequency, attack, decay, sustain, release, volume, waveform
+    PatchBank[38].operators[0] = { 0, 0, 64, 64, 2, 255, 0 };
+
+    // 39: Synth Bass 2
+    PatchBank[39].defined = true;
+    PatchBank[39].modmode = 4;
+    PatchBank[39].feedback = 0x88;
+    // frequency, attack, decay, sustain, release, volume, waveform
+    PatchBank[39].operators[0] = { 0, 0, 64, 64, 2, 255, 0 };
+
+    // 46: Orchestral Harp
+    PatchBank[46].defined = true;
+    PatchBank[46].modmode = 4;
+    PatchBank[46].feedback = 0x80;
+    // frequency, attack, decay, sustain, release, volume, waveform
+    PatchBank[46].operators[0] = { 0, 0, 64, 0, 32, 255, 0 };
+    PatchBank[46].operators[1] = { 0x1010, 0, 0, 255, 255, 16, 0 };
+    PatchBank[46].operators[2] = { 0x0FF3, 0, 0, 255, 255, 16, 0 };
+
     // 79: Ocarina
     PatchBank[79].defined = true;
     PatchBank[79].modmode = 0;
@@ -121,6 +178,22 @@ void initializePatchBank() {
     // frequency, attack, decay, sustain, release, volume, waveform
     PatchBank[81].operators[0] = { 0, 0, 1, 144, 0, 255, 5 };
 
+    // 87: Lead 8 (bass + lead)
+    PatchBank[87].defined = true;
+    PatchBank[87].modmode = 4;
+    PatchBank[87].feedback = 0x88;
+    // frequency, attack, decay, sustain, release, volume, waveform
+    PatchBank[87].operators[0] = { 0, 0, 16, 128, 4, 255, 0 };
+
+    // 100: FX 5 (brightness)
+    PatchBank[100].defined = true;
+    PatchBank[100].modmode = 4;
+    PatchBank[100].feedback = 0x84;
+    // frequency, attack, decay, sustain, release, volume, waveform
+    PatchBank[100].operators[0] = { 0, 1, 64, 64, 4, 255, 0 };
+    PatchBank[100].operators[1] = { 0x0ff1, 1, 64, 64, 4, 16, 15 };
+    PatchBank[100].operators[2] = { 0x1012, 1, 64, 64, 4, 16, 15 };
+
     // 必要に応じて他のパッチも追加
 
 
@@ -130,8 +203,9 @@ void initializePatchBank() {
     defaultPatch.feedback = 0x80;
     defaultPatch.keyShift = 0;
     // frequency, attack, decay, sustain, release, volume, waveform
-    defaultPatch.operators[0] = { 0, 0, 64, 0, 1, 255, 3 };
-    defaultPatch.operators[1] = { 0x1000, 0, 0, 255, 255, 17, 6 };
+    defaultPatch.operators[0] = { 0,      0, 64, 1, 32, 255, 3 };
+    defaultPatch.operators[1] = { 0x1000, 0, 0, 255, 255,  17, 6 };
+    //defaultPatch.operators[2] = { 0x0FF3, 0, 0, 255, 255, 16, 0 };
 }
 
 
@@ -144,4 +218,42 @@ const Patch& getPatchOrDefault(int programNumber) {
     }
     //printf("[Warning::Patch] Patch %d not defined, returning default patch 0\n", programNumber);
     return defaultPatch; // デフォルトは0番パッチ
+}
+
+// PatchクラスのtoRegValuesメソッドの実装
+std::array<uint8_t, 64> Patch::toRegValues(uint8_t midiVolume) {
+    std::array<uint8_t, 64> regs{0};
+    regs[0x1F] = feedback; // フィードバック
+    regs[0x1C] = modmode; // モジュレーションモード
+    for (size_t i = 0; i < 8; ++i) {
+        const Operator& op = operators[i];
+        // すべてのOPでfrequency/volumeを反映
+        regs[i * 2 + 0] = op.frequency >> 8; // 周波数倍率 上位ビット
+        regs[i * 2 + 1] = op.frequency & 0xFF; // 周波数倍率 下位ビット
+        // volumeScalingMapに応じて音量をスケーリング
+        uint8_t finalVolume = op.volume;
+        if (modmode < 13 && volumeScalingMap[modmode][i]) {
+            // スケーリングが必要な場合、MIDIボリュームで調整
+            finalVolume = static_cast<uint8_t>((static_cast<uint16_t>(op.volume) * midiVolume) / 255);
+        }
+        regs[0x10 + i] = finalVolume; // 音量
+        regs[0x20 + i * 4 + 0] = op.attack; // Attack
+        regs[0x20 + i * 4 + 1] = op.decay; // Decay
+        regs[0x20 + i * 4 + 2] = op.sustain; // Sustain
+        regs[0x20 + i * 4 + 3] = op.release; // Release
+        // 波形は4bitなので、オペレーター番号に応じてMSB, LSBを切り替える (奇数番目はMSB, 偶数番目はLSB)
+        if (i % 2 == 0) {
+            regs[0x18 + i / 2] = (op.waveform & 0x0F) << 4; // MSBを設定
+        } else {
+            regs[0x18 + i / 2] |= (op.waveform & 0x0F); // LSBを設定
+        }
+    }
+    // ...他のパラメータも必要に応じてマッピング
+    regValues = regs; // メンバにも保存
+    //printf("Patch toRegValues: ");
+    //for (int i = 0; i < 64; ++i) {
+    //    printf("%02X ", regValues[i]);
+    //}
+    //printf("\n");
+    return regs;
 }
