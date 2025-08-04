@@ -9,7 +9,117 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+//==============================================================================
+// HexDumpViewer Implementation
+HexDumpViewer::HexDumpViewer()
+    : monoFont(juce::Font::getDefaultMonospacedFontName(), 12.0f, juce::Font::plain)
+{
+    // スクロール可能にするため、マウスホイールイベントを有効にする
+    setWantsKeyboardFocus(false);
+}
 
+HexDumpViewer::~HexDumpViewer()
+{
+}
+
+void HexDumpViewer::paint(juce::Graphics& g)
+{
+    g.fillAll(juce::Colours::black);
+    g.setFont(monoFont);
+    
+    if (hexData.empty()) {
+        g.setColour(juce::Colours::white);
+        g.drawText("No data available", getLocalBounds(), juce::Justification::centred);
+        return;
+    }
+    
+    int width = getWidth();
+    int height = getHeight();
+    int maxLines = height / lineHeight;
+    int totalLines = (static_cast<int>(0x2C0) + bytesPerLine - 1) / bytesPerLine;
+    
+    // スクロールオフセットの制限
+    scrollOffset = juce::jlimit(0, juce::jmax(0, totalLines - maxLines), scrollOffset);
+    
+    int x = 5;
+    int y = 5;
+    
+    for (int line = 0; line < maxLines && (line + scrollOffset) < totalLines; ++line) {
+        int lineIndex = line + scrollOffset;
+        int startByte = lineIndex * bytesPerLine;
+        int endByte = juce::jmin(startByte + bytesPerLine, static_cast<int>(hexData.size()));
+        
+        // アドレス表示
+        g.setColour(juce::Colours::lightblue);
+        juce::String addrStr = juce::String::toHexString(static_cast<int>(baseAddr + startByte)).paddedLeft('0', 8).toUpperCase();
+        g.drawText(addrStr + ":", x, y + line * lineHeight, 80, lineHeight, juce::Justification::centredLeft);
+        
+        // 16進データ表示
+        g.setColour(juce::Colours::white);
+        juce::String hexStr;
+        juce::String asciiStr;
+        
+        for (int i = startByte; i < endByte; ++i) {
+            uint8_t byte = hexData[i];
+            hexStr += juce::String::toHexString(static_cast<int>(byte)).paddedLeft('0', 2).toUpperCase() + " ";
+            
+            // ASCII文字表示（印刷可能文字のみ）
+            /*if (byte >= 32 && byte <= 126) {
+                asciiStr += static_cast<char>(byte);
+            } else {
+                asciiStr += ".";
+            }*/
+        }
+        
+        // 16進データを表示
+        g.drawText(hexStr, x + 90, y + line * lineHeight, 400, lineHeight, juce::Justification::centredLeft);
+        
+        // ASCII文字を表示
+        //g.setColour(juce::Colours::lightgreen);
+        //g.drawText(asciiStr, x + 500, y + line * lineHeight, 200, lineHeight, juce::Justification::centredLeft);
+    }
+    
+    // スクロールバー的な表示
+    if (totalLines > maxLines) {
+        int scrollBarX = width - 15;
+        int scrollBarHeight = height - 10;
+        
+        g.setColour(juce::Colours::darkgrey);
+        g.fillRect(scrollBarX, 5, 10, scrollBarHeight);
+        
+        float scrollRatio = static_cast<float>(scrollOffset) / static_cast<float>(totalLines - maxLines);
+        int thumbY = static_cast<int>(5 + scrollRatio * (scrollBarHeight - 20));
+        
+        g.setColour(juce::Colours::lightgrey);
+        g.fillRect(scrollBarX, thumbY, 10, 20);
+    }
+}
+
+void HexDumpViewer::resized()
+{
+    // リサイズ時の処理（必要に応じて）
+}
+
+void HexDumpViewer::updateData(const std::vector<uint8_t>& data, uint32_t baseAddress)
+{
+    hexData = data;
+    baseAddr = baseAddress;
+    repaint();
+}
+
+void HexDumpViewer::mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel)
+{
+    int totalLines = (static_cast<int>(hexData.size()) + bytesPerLine - 1) / bytesPerLine;
+    int maxLines = getHeight() / lineHeight;
+    
+    if (totalLines > maxLines) {
+        scrollOffset -= static_cast<int>(wheel.deltaY * 3); // スクロール感度調整
+        scrollOffset = juce::jlimit(0, totalLines - maxLines, scrollOffset);
+        repaint();
+    }
+}
+
+//==============================================================================
 
 //==============================================================================
 _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor (_3HSPlugAudioProcessor& p)
@@ -19,10 +129,14 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor (_3HSPlugAudioProcess
     //multiOscilloscope = std::make_unique<MultiOscilloscopeComponent>();
     //addAndMakeVisible(*multiOscilloscope);
 
-    // ウィンドウサイズを横側に拡張（既存の情報表示 + オシロスコープ）
-    setSize (600, 950);
+    // 16進ダンプビューアーコンポーネントを作成
+    hexDumpViewer = std::make_unique<HexDumpViewer>();
+    addAndMakeVisible(*hexDumpViewer);
+
+    // ウィンドウサイズを横側に拡張（既存の情報表示 + 16進ダンプビューアー）
+    setSize (1200, 950);
     setResizable(true, true);
-    setResizeLimits(500, 600, 2560, 1440); // 最小サイズも調整
+    setResizeLimits(800, 600, 2560, 1440); // 最小サイズも調整
     startTimerHz(60); // 60HzでtimerCallback()を呼ぶ
     // 時間経過による減衰計算
     currentDisplayTick = 0;
@@ -239,12 +353,17 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
 
 void _3HSPlugAudioProcessorEditor::resized()
 {
-    //auto bounds = getLocalBounds();
+    auto bounds = getLocalBounds();
     
     // 左側600pxを既存のGUI用に確保
-    //auto leftPanel = bounds.removeFromLeft(600);
+    auto leftPanel = bounds.removeFromLeft(600);
     
-    // 右側にオシロスコープを配置
+    // 右側に16進ダンプビューアーを配置
+    if (hexDumpViewer != nullptr) {
+        hexDumpViewer->setBounds(bounds.reduced(5));
+    }
+    
+    // オシロスコープは無効化
     //if (multiOscilloscope != nullptr) {
     //    multiOscilloscope->setBounds(bounds.reduced(5));
     //}
@@ -255,7 +374,15 @@ void _3HSPlugAudioProcessorEditor::timerCallback()
     // 既存のGUI要素を再描画
     repaint();
     
-    // オシロスコープにオーディオデータを送信
+    // 16進ダンプビューアーにサウンドレジスタデータを送信
+    if (hexDumpViewer != nullptr) {
+        auto ramDump = audioProcessor.getRamDump();
+        if (!ramDump.empty()) {
+            hexDumpViewer->updateData(ramDump, 0x400000);
+        }
+    }
+    
+    // オシロスコープは無効化
     //if (multiOscilloscope != nullptr) {
     //    updateOscilloscopeData();
     //}

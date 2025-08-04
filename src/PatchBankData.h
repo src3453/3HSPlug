@@ -2,6 +2,7 @@
 #pragma once
 #include <array>
 #include <cstdint>
+#include <string>
 
 #define PATCH_BANK_SIZE 128
 
@@ -39,4 +40,9 @@ extern std::array<Patch, PATCH_BANK_SIZE> PatchBank;
 extern Patch defaultPatch; // デフォルトパッチ
 extern bool volumeScalingMap[13][8]; // volumeScalingMapをexternで宣言
 void initializePatchBank();
-const Patch& getPatchOrDefault(int programNumber);
+bool loadPatchBankFromYAML(const std::string& filePath);
+bool loadPatchBankFromJSON(const std::string& filePath);
+bool savePatchBankToYAML(const std::string& filePath);
+bool savePatchBankToJSON(const std::string& filePath);
+void exportCurrentPatchBankToJSON(); // 一時的な関数: 現在のPatchBankをJSONに書き出す
+Patch& getPatchOrDefault(int programNumber);

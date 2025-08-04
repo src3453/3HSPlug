@@ -524,10 +524,13 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         v.volume = vol;
                         int baseAddr = 0x400000 + 0x40 * vIdx;
                         int bank = (baseAddr - 0x400000) / 0x40;
-                        auto regs = PatchBank[currentProgram[v.midiChannel-1]].toRegValues(vol);
-                        for (size_t i = 0x10; i < 0x10; ++i) {
+                        auto regs = getPatchOrDefault(v.midiChannel-1).toRegValues(vol);
+                        
+                        for (size_t i = 0x10; i < 0x18; ++i) {
                         s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + static_cast<int>(i), regs[i]);
+                        //printf("%02x: %02x, ", i, regs[i]);
                         }
+                        //printf("\n");
                             // パンCC受信時は即時パン反映
                         if (msg.getControllerNumber() == 10) {
                             uint8 panCC = msg.getControllerValue();

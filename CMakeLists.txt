@@ -24,13 +24,29 @@ endif()
 
 add_subdirectory(lib/JUCE)
 
+# FetchContentを使ってyaml-cppを取得
+include(FetchContent)
+
+FetchContent_Declare(
+    yaml-cpp
+    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+    GIT_TAG yaml-cpp-0.7.0
+)
+
+# yaml-cppのビルド設定（不要なコンポーネントを無効化）
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(yaml-cpp)
+
 juce_add_plugin(3HSPlug
 
     COMPANY_NAME "src3453 @ KiTsuNeKo Works"
     COMPANY_COPYRIGHT "(C) 2025 src3453 licensed under AGPLv3"
     PLUGIN_MANUFACTURER_CODE KTNK
     PLUGIN_CODE 3HSP
-
+    VST3_CATEGORIES Instrument
     FORMATS Standalone
     PRODUCT_NAME "3HSPlug")
 
@@ -55,6 +71,7 @@ target_compile_definitions(3HSPlug
 target_link_libraries(3HSPlug
     PRIVATE
         juce::juce_audio_utils
+        yaml-cpp
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags

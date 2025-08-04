@@ -58,7 +58,7 @@ public:
     };
     
     float S3HS_SAMPLE_FREQ = 48000;
-    #define S3HS_MASTER_CLOCK (48000 * 4.0) // 192kHz
+    #define S3HS_MASTER_CLOCK (48000*2)
     #define SINTABLE_LENGTH 256
     #define PHASE_RESOLUTION 16
     #define DMA_BUFFER_SIZE 4096

@@ -14,6 +14,36 @@
 
 //==============================================================================
 /**
+ * スクロール可能な16進ダンプビューアーコンポーネント
+ */
+class HexDumpViewer : public juce::Component
+{
+public:
+    HexDumpViewer();
+    ~HexDumpViewer() override;
+    
+    void paint(juce::Graphics& g) override;
+    void resized() override;
+    
+    // データを更新する
+    void updateData(const std::vector<uint8_t>& data, uint32_t baseAddress = 0x400000);
+    
+    // マウスホイールでスクロール
+    void mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel) override;
+    
+private:
+    std::vector<uint8_t> hexData;
+    uint32_t baseAddr = 0x400000;
+    int scrollOffset = 0;
+    int bytesPerLine = 16;
+    int lineHeight = 16;
+    juce::Font monoFont;
+    
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(HexDumpViewer)
+};
+
+//==============================================================================
+/**
 */
 class _3HSPlugAudioProcessorEditor  : public juce::AudioProcessorEditor, private juce::Timer
 {
@@ -35,6 +65,9 @@ private:
 
     // オシロスコープコンポーネント
     //std::unique_ptr<MultiOscilloscopeComponent> multiOscilloscope;
+    
+    // 16進ダンプビューアーコンポーネント
+    std::unique_ptr<HexDumpViewer> hexDumpViewer;
     
     // オシロスコープデータ更新メソッド
     //void updateOscilloscopeData();
