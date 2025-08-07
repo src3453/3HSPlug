@@ -73,6 +73,7 @@ target_link_libraries(3HSPlug
         juce::juce_audio_utils
         yaml-cpp
     PUBLIC
+        juce::juce_audio_plugin_client
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)

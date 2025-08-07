@@ -39,7 +39,7 @@ struct Patch {
 extern std::array<Patch, PATCH_BANK_SIZE> PatchBank;
 extern Patch defaultPatch; // デフォルトパッチ
 extern bool volumeScalingMap[13][8]; // volumeScalingMapをexternで宣言
-void initializePatchBank();
+void initializePatchBank(const std::string& patchJsonPath = "patch_bank.json");
 bool loadPatchBankFromYAML(const std::string& filePath);
 bool loadPatchBankFromJSON(const std::string& filePath);
 bool savePatchBankToYAML(const std::string& filePath);

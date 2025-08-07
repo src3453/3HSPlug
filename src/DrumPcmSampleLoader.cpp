@@ -67,11 +67,13 @@ bool DrumPcmSampleLoader::loadSampleToRam(const std::string& filePath, uint32_t 
     return true;
 }
 
-// 一括ロード: ./pcm/ ディレクトリ内の[ノート番号].wavを全てロードし、キーマップに登録
-void loadAllDrumSamples(DrumKeymapManager& keymap, uint32_t baseRamAddr) {
+// 一括ロード: 指定ディレクトリ内の[ノート番号].wavを全てロードし、キーマップに登録
+void loadAllDrumSamples(DrumKeymapManager& keymap, uint32_t baseRamAddr, const std::string& pcmPath) {
     uint32_t ramPtr = baseRamAddr;
+    printf("[DrumPcmSampleLoader] Loading drum samples from: %s\n", pcmPath.c_str());
+    
     for (int note = 0; note < 128; ++note) {
-        std::string wavPath = "./pcm/" + std::to_string(note) + ".wav";
+        std::string wavPath = pcmPath + std::to_string(note) + ".wav";
         if (!fs::exists(wavPath)) {
             continue;
         }
@@ -82,7 +84,8 @@ void loadAllDrumSamples(DrumKeymapManager& keymap, uint32_t baseRamAddr) {
         if (loader.loadSampleToRam(wavPath, ramPtr, sampleRate, pcmSize)) {
             keymap.assignNoteToSample(10, note, ramPtr, sampleRate, pcmSize); // MIDI ch10
             ramPtr += pcmSize; // PCMデータ長分だけポインタを進める
+            printf("[DrumPcmSampleLoader] Loaded note %d from %s\n", note, wavPath.c_str());
         }
     }
-    printf("[DrumPcmSampleLoader] Loaded all drum samples, %d bytes used (%d bytes free)\n", ramPtr - baseRamAddr, g_pcmRamSize - (ramPtr - baseRamAddr));
+    printf("[DrumPcmSampleLoader] Loaded all drum samples from %s, %d bytes used (%d bytes free, %f%%)\n", pcmPath.c_str(), ramPtr - baseRamAddr, g_pcmRamSize - (ramPtr - baseRamAddr), (ramPtr - baseRamAddr) * 100.0f / g_pcmRamSize);
 }

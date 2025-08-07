@@ -655,8 +655,8 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x00, (pcmFreq >> 8) & 0xFF);
                         s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x01, pcmFreq & 0xFF);
                         
-                        printf("[DrumPCM] Pitch bend applied: CH%d PCM%d, bend=%d, ratio=%.3f, freq=%d\n",
-                               ch, i, bend, pitchRatio, pcmFreq);
+                        //printf("[DrumPCM] Pitch bend applied: CH%d PCM%d, bend=%d, ratio=%.3f, freq=%d\n",
+                        //       ch, i, bend, pitchRatio, pcmFreq);
                     }
                 }
             }

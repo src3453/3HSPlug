@@ -10,6 +10,27 @@ from tkinter import ttk, filedialog, messagebox
 import json
 import os
 
+# 波形の定義
+WAVEFORMS = {
+    0: "Sine",
+    1: "Abs. Sine",
+    2: "Squished Sine",
+    3: "Square",
+    4: "Triangle",
+    5: "Sawtooth",
+    6: "Abs. Square",
+    7: "Abs. Triangle",
+    8: "Abs. Sawtooth",
+    9: "Noise",
+    10: "PCM1 -> Wave",
+    11: "PCM2 -> Wave",
+    12: "PCM3 -> Wave",
+    13: "PCM4 -> Wave",
+    14: "Abs. AC. Sine",
+    15: "Alternating Sine"
+    }
+
+# モジュレーションモードの定義
 MODULATION_MODES = { 
     0: "Additive",
     1: "4x2OP FM",
@@ -169,6 +190,43 @@ class PatchEditor:
         
         self.setup_ui()
         
+    def sort_patches_by_program(self):
+        """プログラム番号でパッチを昇順ソート"""
+        self.patch_data["patches"].sort(key=lambda p: p.get("program", 0))
+        self.update_patch_list()
+        messagebox.showinfo("Info", "Patches sorted by Program#")
+    
+    def duplicate_patch_dialog(self):
+        """パッチ複製ダイアログを表示"""
+        import copy
+        selection = self.patch_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("Patch Selection", "Please select a patch to duplicate")
+            return
+        index = selection[0]
+        patch = self.patch_data["patches"][index]
+        # プログラム番号入力ダイアログ
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Enter New Program Number")
+        tk.Label(dialog, text="New Program Number (0-127):").pack(padx=10, pady=5)
+        prog_var = tk.IntVar(value=patch.get("program", 0))
+        spin = ttk.Spinbox(dialog, from_=0, to=127, textvariable=prog_var, width=10)
+        spin.pack(padx=10, pady=5)
+        def on_ok():
+            new_prog = prog_var.get()
+            # 既存番号チェック
+            if any(p.get("program", -1) == new_prog for p in self.patch_data["patches"]):
+                messagebox.showerror("Error", f"Program number {new_prog} already exists")
+                return
+            new_patch = copy.deepcopy(patch)
+            new_patch["program"] = new_prog
+            self.patch_data["patches"].append(new_patch)
+            self.update_patch_list()
+            dialog.destroy()
+            messagebox.showinfo("Info", f"Patch duplicated to {new_prog}")
+        ttk.Button(dialog, text="OK", command=on_ok).pack(side=tk.LEFT, padx=10, pady=10)
+        ttk.Button(dialog, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=10, pady=10)
+
     def setup_ui(self):
         # メニューバー
         menubar = tk.Menu(self.root)
@@ -210,6 +268,8 @@ class PatchEditor:
         
         ttk.Button(button_frame, text="New patch", command=self.new_patch).pack(pady=2)
         ttk.Button(button_frame, text="Delete Patch", command=self.delete_patch).pack(pady=2)
+        ttk.Button(button_frame, text="Sort by Program#", command=self.sort_patches_by_program).pack(pady=2)
+        ttk.Button(button_frame, text="Duplicate Patch...", command=self.duplicate_patch_dialog).pack(pady=2)
         
         # 右側パネル: パッチエディター
         right_frame = ttk.Frame(main_frame)
@@ -297,11 +357,11 @@ class PatchEditor:
         
         slider_fu = ttk.Scale(params_frame, from_=0, to=255, orient=tk.HORIZONTAL,
                              variable=var_fu, command=self.on_operator_value_change)
-        slider_fu.grid(row=row, column=2, padx=5, pady=2, sticky=tk.EW)
+        slider_fu.grid(row=row, column=2, padx=5, pady=2, sticky=tk.W)
         self.operator_sliders["frequency_msb"] = slider_fu
         
         hex_label_fu = ttk.Label(params_frame, text="(0x00)", foreground="gray")
-        hex_label_fu.grid(row=row, column=3, padx=5, pady=2)
+        hex_label_fu.grid(row=row, column=3, padx=5, pady=2, sticky=tk.E)
         var_fu.trace_add('write', lambda *args, lbl=hex_label_fu, v=var_fu: lbl.config(text=f"(0x{v.get():02X})"))
         
         # Frequency FL (LSB)
@@ -318,16 +378,16 @@ class PatchEditor:
         
         slider_fl = ttk.Scale(params_frame, from_=0, to=255, orient=tk.HORIZONTAL,
                              variable=var_fl, command=self.on_operator_value_change)
-        slider_fl.grid(row=row, column=2, padx=5, pady=2, sticky=tk.EW)
+        slider_fl.grid(row=row, column=2, padx=5, pady=2, sticky=tk.W)
         self.operator_sliders["frequency_lsb"] = slider_fl
         
         hex_label_fl = ttk.Label(params_frame, text="(0x00)", foreground="gray")
-        hex_label_fl.grid(row=row, column=3, padx=5, pady=2)
+        hex_label_fl.grid(row=row, column=3, padx=5, pady=2, sticky=tk.E)
         var_fl.trace_add('write', lambda *args, lbl=hex_label_fl, v=var_fl: lbl.config(text=f"(0x{v.get():02X})"))
         
         # Combined frequency display
         row = 2
-        ttk.Label(params_frame, text="Frequency:").grid(row=row, column=0, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(params_frame, text="Frequency:").grid(row=row, column=0, sticky=tk.E, padx=5, pady=2)
         self.freq_combined_label = ttk.Label(params_frame, text="0 (0x0000)", foreground="blue")
         self.freq_combined_label.grid(row=row, column=1, columnspan=2, padx=5, pady=2, sticky=tk.W)
         
@@ -340,8 +400,8 @@ class PatchEditor:
         var_fl.trace_add('write', update_combined_freq)
         
         # その他のパラメーター
-        param_names = ["attack", "decay", "sustain", "release", "volume", "waveform"]
-        param_ranges = [(0, 255), (0, 255), (0, 255), (0, 255), (0, 255), (0, 15)]
+        param_names = ["waveform", "volume", "attack", "decay", "sustain", "release"]
+        param_ranges = [(0, 15), (0, 255), (0, 255), (0, 255), (0, 255), (0, 255),]
         
         for i, (param, (min_val, max_val)) in enumerate(zip(param_names, param_ranges)):
             row = i + 3
@@ -357,14 +417,14 @@ class PatchEditor:
             
             slider = ttk.Scale(params_frame, from_=min_val, to=max_val, orient=tk.HORIZONTAL,
                               variable=var, command=self.on_operator_value_change)
-            slider.grid(row=row, column=2, padx=5, pady=2, sticky=tk.EW)
+            slider.grid(row=row, column=2, padx=5, pady=2, sticky=tk.W)
             self.operator_sliders[param] = slider
             
             # 16進数表示（waveformのみ）
             if param == "waveform":
-                hex_label = ttk.Label(params_frame, text="(0x0)", foreground="gray")
-                hex_label.grid(row=row, column=3, padx=5, pady=2)
-                var.trace_add('write', lambda *args, lbl=hex_label, v=var: lbl.config(text=f"(0x{v.get():X})"))
+                hex_label = ttk.Label(params_frame, text="(Sine)", foreground="gray")
+                hex_label.grid(row=row, column=3, padx=5, pady=2, sticky=tk.E)
+                var.trace_add('write', lambda *args, lbl=hex_label, v=var: lbl.config(text=f"({WAVEFORMS.get(int(v.get()), 'Unknown')})"))
         
         # カラムの重みを設定してスライダーを伸縮可能にする
         params_frame.columnconfigure(2, weight=1)

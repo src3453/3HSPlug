@@ -22,4 +22,4 @@ public:
 };
 
 // 一括ロード関数の宣言を追加
-void loadAllDrumSamples(class DrumKeymapManager& keymap, uint32_t baseRamAddr = 0);
+void loadAllDrumSamples(class DrumKeymapManager& keymap, uint32_t baseRamAddr = 0, const std::string& pcmPath = "./pcm/");

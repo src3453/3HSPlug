@@ -64,6 +64,9 @@ public:
     ~_3HSPlugAudioProcessor() override;
 
     void resetGM();
+    
+    // プロセッサ初期化（共通処理）
+    void initializeProcessor();
 
     // 指定チャンネルの現在のプログラム番号を取得
     int getCurrentProgramForChannel(int channel) const;
@@ -102,6 +105,12 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     uint64_t getCurrentTick() const;
+    
+    // パス設定関数
+    void setPcmPath(const std::string& path) { pcmPath = path; }
+    void setPatchJsonPath(const std::string& path) { patchJsonPath = path; }
+    std::string getPcmPath() const { return pcmPath; }
+    std::string getPatchJsonPath() const { return patchJsonPath; }
 
     // パフォーマンス測定
     double getAudioProcessingTimeMs() const { return audioProcessingTimeMs; }
@@ -135,6 +144,10 @@ private:
     // S3HS音源エンジン
     std::vector<S3HS_sound> s3hsSounds;
     int numChips = 1;
+    
+    // パス設定
+    std::string pcmPath = "./pcm/";
+    std::string patchJsonPath = "patch_bank.json";
 
     // パラメータ管理（最小限：音色/ボリューム/ADSR/ゲート）
     juce::AudioProcessorValueTreeState parameters;

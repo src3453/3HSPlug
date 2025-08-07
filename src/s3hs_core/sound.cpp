@@ -58,7 +58,7 @@ public:
     };
     
     float S3HS_SAMPLE_FREQ = 48000;
-    #define S3HS_MASTER_CLOCK (48000*2)
+    #define S3HS_MASTER_CLOCK (48000*4)
     #define SINTABLE_LENGTH 256
     #define PHASE_RESOLUTION 16
     #define DMA_BUFFER_SIZE 4096
@@ -365,15 +365,16 @@ public:
                     float nxt = (float)regwt[16+48*ch+((int)(phase+1)%32)];
                     val = (int)(pre+(nxt-pre)*fmod((((float)phase))));
                 } else if(regwt[ch*48+3] == 0) {
-                    int pre,nxt;
+                    int pre;
                     if (pcm_addr[ch]+(int)phase > pcm_addr_end[ch] && pcm_loop_start[ch] < pcm_addr_end[ch] && pcm_loop_start[ch] != 0xFFFFFF) {
                         pre = ram_peek(ram,pcm_addr[ch]+((int)phase%(pcm_addr_end[ch]-pcm_loop_start[ch])));
-                        nxt = ram_peek(ram,pcm_addr[ch]+((int)(phase+1)%(pcm_addr_end[ch]-pcm_loop_start[ch])));
+                        //nxt = ram_peek(ram,pcm_addr[ch]+((int)(phase+1)%(pcm_addr_end[ch]-pcm_loop_start[ch])));
                     } else {
                         pre = ram_peek(ram,std::min(pcm_addr[ch]+(int)phase,pcm_addr_end[ch]));
-                        nxt = ram_peek(ram,std::min(pcm_addr[ch]+(int)phase+1,pcm_addr_end[ch]));
+                        //nxt = ram_peek(ram,std::min(pcm_addr[ch]+(int)phase+1,pcm_addr_end[ch]));
                     }
-                    val = (int)(pre+((float)(nxt-pre)*fmod((((float)phase)))));
+                    //val = (int)(pre+((float)(nxt-pre)*fmod((((float)phase)))));
+                    val = pre;
                     //std::cout << phase << std::endl;
                 }
 
