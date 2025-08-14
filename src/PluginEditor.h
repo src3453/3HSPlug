@@ -60,8 +60,18 @@ private:
     // access the processor object that created it.
     _3HSPlugAudioProcessor& audioProcessor;
 
+    // パンポット表示用のUIコンポーネント
+    struct PanKnob
+    {
+        float panValue = 0.0f; // -1.0 (L) ～ 1.0 (R)
+    };
+    std::vector<PanKnob> panKnobs;
+
     void timerCallback() override;
     uint64_t currentDisplayTick = 0; // 時間経過による減衰計算用
+    
+    // パンポット表示用描画関数（LR分離バー表示）
+    void drawPanBars(juce::Graphics& g, int x, int y, int width, int height, int panL, int panR);
 
     // オシロスコープコンポーネント
     //std::unique_ptr<MultiOscilloscopeComponent> multiOscilloscope;

@@ -96,6 +96,7 @@ public:
     //==============================================================================
     int getNumPrograms() override;
     int getCurrentProgram() override;
+    float getCurrentPitchBendScaled(int channel);
     void setCurrentProgram (int index) override;
     const juce::String getProgramName (int index) override;
     void changeProgramName (int index, const juce::String& newName) override;
@@ -133,6 +134,9 @@ public:
     const std::vector<VoiceSlot>& getVoiceSlots() const noexcept { return voiceSlots; }
     int getNumVoices() const noexcept { return numChips * numVoices; }
     int getNumChips() const noexcept { return numChips; }
+    
+    // パンポット値取得関数
+    std::pair<int, int> getVoicePanValues(int voiceIndex) const;
 
     // RAMダンプ取得（1チップ目、0x400000～0x4003FF）
     std::vector<uint8_t> getRamDump() const;

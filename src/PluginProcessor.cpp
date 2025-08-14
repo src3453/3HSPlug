@@ -192,6 +192,14 @@ int _3HSPlugAudioProcessor::getNumPrograms()
                 // so this should be at least 1, even if you're not really implementing programs.
 }
 
+float _3HSPlugAudioProcessor::getCurrentPitchBendScaled(int channel)
+{   
+    if (channel < 1 || channel > 16) {
+        return 0.0f; // 無効なチャンネルの場合は0を返す
+    }
+    return (static_cast<float>(channelPitchBend[channel-1]) / 8192.0f) * channelPitchBendRange[channel-1];
+}
+
 int _3HSPlugAudioProcessor::getCurrentProgram()
 {
     return 0;
@@ -1181,6 +1189,44 @@ DrumPcmChannelDebugInfo _3HSPlugAudioProcessor::getDrumPcmChannelInfo(int ch) co
     // info.active = ...;
 
     return info;
+}
+
+// パンポット値取得関数
+std::pair<int, int> _3HSPlugAudioProcessor::getVoicePanValues(int voiceIndex) const
+{
+    if (voiceIndex < 0 || voiceIndex >= static_cast<int>(voiceSlots.size())) {
+        return {15, 15}; // デフォルト値（センター）
+    }
+    
+    int chip = voiceIndex / numVoices;
+    int vIdx = voiceIndex % numVoices;
+    
+    if (chip >= numChips || chip < 0) {
+        return {15, 15}; // デフォルト値
+    }
+    
+    // S3HSサウンドチップからパンポット値を取得
+    // アドレス: 0x400000 + 0x40 * vIdx + 0x1d
+    int baseAddr = 0x400000 + 0x40 * vIdx;
+    
+    // const_castを使用してconst制約を回避（読み取り専用操作なので安全）
+    auto& nonConstSound = const_cast<S3HS_sound&>(s3hsSounds[chip]);
+    auto ramDump = nonConstSound.ram_peek2array(nonConstSound.ram, baseAddr + 0x1d, 1);
+    
+    if (ramDump.empty()) {
+        return {15, 15}; // デフォルト値
+    }
+    
+    int panL = (ramDump[0] >> 4) & 0xF;  // 上位4ビット
+    int panR = ramDump[0] & 0xF;         // 下位4ビット
+    
+    // 0の場合はセンター扱い
+    if (panL == 0 && panR == 0) {
+        panL = 15;
+        panR = 15;
+    }
+    
+    return {panL, panR};
 }
 
 // ドラムPCMチャンネルデバッグ情報取得

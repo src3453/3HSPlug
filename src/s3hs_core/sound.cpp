@@ -58,7 +58,6 @@ public:
     };
     
     float S3HS_SAMPLE_FREQ = 48000;
-    #define S3HS_MASTER_CLOCK (48000*4)
     #define SINTABLE_LENGTH 256
     #define PHASE_RESOLUTION 16
     #define DMA_BUFFER_SIZE 4096
@@ -225,6 +224,9 @@ public:
         envl.at((size_t)(ch*8+opNum)).update(adsr,dt);
     }
 
+    #define S3HS_MASTER_CLOCK (48000*2)
+
+    // Quantize frequency by period, simulating a pitch inaccuracy like NES, PSG...
     float quantizeFreqByPeriod(float freq) {
         const float masterClock = S3HS_MASTER_CLOCK;   
         int calculatedPeriod = std::floor(masterClock/freq);

@@ -282,10 +282,11 @@ class PatchEditor:
         # プログラム番号
         ttk.Label(info_frame, text="Program number:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
         self.program_var = tk.IntVar()
-        self.program_spinbox = ttk.Spinbox(info_frame, from_=0, to=127, textvariable=self.program_var, 
+        self.program_spinbox = ttk.Spinbox(info_frame, from_=0, to=127, textvariable=self.program_var,
                                           command=self.on_value_change, width=10)
         self.program_spinbox.grid(row=0, column=1, padx=5, pady=2)
         self.program_spinbox.bind('<Return>', self.on_value_change)
+        self.program_var.trace_add('write', self.on_value_change)
         
         # 楽器名表示
         self.instrument_label = ttk.Label(info_frame, text="", foreground="blue")
@@ -298,6 +299,7 @@ class PatchEditor:
                                           command=self.on_value_change, width=10)
         self.modmode_spinbox.grid(row=1, column=1, padx=5, pady=2)
         self.modmode_spinbox.bind('<Return>', self.on_value_change)
+        self.modmode_var.trace_add('write', self.on_value_change)
         modmode_label = ttk.Label(info_frame, text="(Additive)", foreground="gray")
         modmode_label.grid(row=1, column=2, padx=0, pady=2, sticky=tk.W)
         self.modmode_var.trace_add('write', lambda *args, lbl=modmode_label, v=self.modmode_var: lbl.config(text=f"({MODULATION_MODES.get(int(v.get()), 'Unknown')})"))
@@ -309,6 +311,7 @@ class PatchEditor:
                                            command=self.on_value_change, width=10)
         self.feedback_spinbox.grid(row=2, column=1, padx=5, pady=2)
         self.feedback_spinbox.bind('<Return>', self.on_value_change)
+        self.feedback_var.trace_add('write', self.on_value_change)
         feedback_label = ttk.Label(info_frame, text="(0)", foreground="gray")
         feedback_label.grid(row=2, column=2, padx=0, pady=2, sticky=tk.W)
         self.feedback_var.trace_add('write', lambda *args, lbl=feedback_label, v=self.feedback_var: lbl.config(text=f"({int(v.get())-128})"))
@@ -320,6 +323,7 @@ class PatchEditor:
                                            command=self.on_value_change, width=10)
         self.keyshift_spinbox.grid(row=3, column=1, padx=5, pady=2)
         self.keyshift_spinbox.bind('<Return>', self.on_value_change)
+        self.keyshift_var.trace_add('write', self.on_value_change)
         
         # オペレーターエディター
         operators_frame = ttk.LabelFrame(right_frame, text="Operators")
@@ -354,6 +358,7 @@ class PatchEditor:
                                 command=self.on_operator_value_change, width=10)
         spinbox_fu.grid(row=row, column=1, padx=5, pady=2)
         spinbox_fu.bind('<Return>', self.on_operator_value_change)
+        var_fu.trace_add('write', self.on_operator_value_change)
         
         slider_fu = ttk.Scale(params_frame, from_=0, to=255, orient=tk.HORIZONTAL,
                              variable=var_fu, command=self.on_operator_value_change)
@@ -375,6 +380,7 @@ class PatchEditor:
                                 command=self.on_operator_value_change, width=10)
         spinbox_fl.grid(row=row, column=1, padx=5, pady=2)
         spinbox_fl.bind('<Return>', self.on_operator_value_change)
+        var_fl.trace_add('write', self.on_operator_value_change)
         
         slider_fl = ttk.Scale(params_frame, from_=0, to=255, orient=tk.HORIZONTAL,
                              variable=var_fl, command=self.on_operator_value_change)
@@ -414,6 +420,7 @@ class PatchEditor:
                                  command=self.on_operator_value_change, width=10)
             spinbox.grid(row=row, column=1, padx=5, pady=2)
             spinbox.bind('<Return>', self.on_operator_value_change)
+            var.trace_add('write', self.on_operator_value_change)
             
             slider = ttk.Scale(params_frame, from_=min_val, to=max_val, orient=tk.HORIZONTAL,
                               variable=var, command=self.on_operator_value_change)
@@ -474,7 +481,10 @@ class PatchEditor:
     def load_patch_to_ui(self):
         if not self.current_patch:
             return
-            
+        
+        # トレースを一時的に無効化してUIの更新中に余計なイベントを防ぐ
+        self._loading_patch = True
+        
         # 基本情報をUIに反映
         self.program_var.set(self.current_patch.get("program", 0))
         self.modmode_var.set(self.current_patch.get("modmode", 4))
@@ -488,11 +498,17 @@ class PatchEditor:
         
         # 現在選択されているオペレーターの値を更新
         self.load_operator_to_ui()
+        
+        # トレースを再度有効化
+        self._loading_patch = False
     
     def load_operator_to_ui(self):
         if not self.current_patch:
             return
-            
+        
+        # オペレーター読み込み中フラグを設定
+        self._loading_operator = True
+        
         op_index = self.operator_var.get()
         operators = self.current_patch.get("operators", [])
         
@@ -512,12 +528,15 @@ class PatchEditor:
             # オペレーターが存在しない場合は0で初期化
             for var in self.operator_vars.values():
                 var.set(0)
+        
+        # オペレーター読み込み完了
+        self._loading_operator = False
     
     def on_operator_select(self):
         self.load_operator_to_ui()
     
     def on_value_change(self, *args):
-        if not self.current_patch:
+        if not self.current_patch or getattr(self, '_loading_patch', False):
             return
             
         # 基本パラメーターを更新
@@ -535,7 +554,7 @@ class PatchEditor:
         self.update_patch_list()
     
     def on_operator_value_change(self, *args):
-        if not self.current_patch:
+        if not self.current_patch or getattr(self, '_loading_patch', False) or getattr(self, '_loading_operator', False):
             return
             
         op_index = self.operator_var.get()

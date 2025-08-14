@@ -147,6 +147,59 @@ _3HSPlugAudioProcessorEditor::~_3HSPlugAudioProcessorEditor()
     stopTimer();
 }
 
+// パンポット表示用描画関数（LR分離バー表示）
+void _3HSPlugAudioProcessorEditor::drawPanBars(juce::Graphics& g, int x, int y, int width, int height, int panL, int panR)
+{
+    // バーの幅は半分ずつ
+    int barWidth = width / 2;
+    int barHeight = height;
+    
+    // 背景色で全体をクリア
+    g.setColour(juce::Colours::darkgrey);
+    g.fillRect(x, y, width, height);
+    
+    // Lチャンネルバー（左側）
+    int lBarX = x;
+    int lBarY = y;
+    float lLevel = static_cast<float>(panL) / 15.0f; // 0-15の範囲を0.0-1.0に正規化
+    int lBarFillHeight = static_cast<int>(barHeight * lLevel);
+    
+    // Lチャンネルの背景（グレー）
+    g.setColour(juce::Colours::darkgrey);
+    g.fillRect(lBarX, lBarY, barWidth - 1, barHeight);
+    
+    // Lチャンネルの値表示（下から上に向かって描画）
+    g.setColour(juce::Colours::cyan);
+    g.fillRect(lBarX, lBarY + barHeight - lBarFillHeight, barWidth - 1, lBarFillHeight);
+    
+    // Rチャンネルバー（右側）
+    int rBarX = x + barWidth;
+    int rBarY = y;
+    float rLevel = static_cast<float>(panR) / 15.0f; // 0-15の範囲を0.0-1.0に正規化
+    int rBarFillHeight = static_cast<int>(barHeight * rLevel);
+    
+    // Rチャンネルの背景（グレー）
+    g.setColour(juce::Colours::darkgrey);
+    g.fillRect(rBarX, rBarY, barWidth, barHeight);
+    
+    // Rチャンネルの値表示（下から上に向かって描画）
+    g.setColour(juce::Colours::orange);
+    g.fillRect(rBarX, rBarY + barHeight - rBarFillHeight, barWidth, rBarFillHeight);
+    
+    // L/Rラベル表示
+    //g.setColour(juce::Colours::white);
+    //g.setFont(juce::Font(8.0f));
+    //g.drawText("L", lBarX, y - 10, barWidth - 1, 8, juce::Justification::centred);
+    //g.drawText("R", rBarX, y - 10, barWidth, 8, juce::Justification::centred);
+    
+    // 外枠の描画
+    //g.setColour(juce::Colours::lightgrey);
+    //g.drawRect(juce::Rectangle<int>(x, y, width, height), 1.0f);
+    
+    // 中央の区切り線
+    //g.drawLine(x + barWidth, y, x + barWidth, y + height, 1.0f);
+}
+
 //==============================================================================
 void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
 {
@@ -166,9 +219,9 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
     int numChips = audioProcessor.getNumChips();
     int numVoices = audioProcessor.numVoices;
     // グラフィカルなバー表示
-    int barHeight = 16;
+    int barHeight = 20;
     int barSpacing = 8;
-    int barWidthMax = 120;
+    int barWidthMax = 192;
     int barStartX = 10;
     int barStartY = 40;
     for (int i = 0; i < totalVoices; ++i) {
@@ -188,12 +241,32 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
             g.setColour(juce::Colours::limegreen);
         }
         g.fillRect(barStartX, y, barWidth, barHeight);
-         if (v.inUse) {
+        if (v.inUse) {
             g.setColour(juce::Colours::red);
         }
         g.fillRect(barStartX+(v.noteNumber * barWidthMax / 128), y, 4, barHeight);
+        if (v.inUse) {
+            g.setColour(juce::Colours::red);
+        
+            int bendbarval = (audioProcessor.getCurrentPitchBendScaled(v.midiChannel) * barWidthMax) / 128;
+            //printf("Bend Bar Value (Channel %d): %d\n", v.midiChannel, bendbarval);
+            if (bendbarval > 0) {
+                g.fillRect(barStartX+(v.noteNumber * barWidthMax / 128 + 2), y+barHeight/2, bendbarval+1, barHeight/2);
+            } else if (bendbarval < 0) {
+                g.fillRect(barStartX+(v.noteNumber * barWidthMax / 128 + 2) + bendbarval, y+barHeight/2, -(bendbarval)+1, barHeight/2);
+            }
+        }
 
-        // テキスト情報（Chip, Note, Ch, Vol, Prg等）をバーの下に表示
+        // パンポット表示を追加（LR分離バー表示）
+        auto panValues = audioProcessor.getVoicePanValues(i);
+        int panBarWidth = 20; // バー表示の幅
+        int panBarHeight = barHeight - 2;
+        int panBarX = barStartX + barWidthMax + 10;
+        int panBarY = y + 1;
+        
+        drawPanBars(g, panBarX, panBarY, panBarWidth, panBarHeight, panValues.first, panValues.second);
+        
+        // テキスト情報（Chip, Note, Ch, Vol, Prg等）をパンポットの右に表示
         g.setColour(juce::Colours::white);
         juce::String infoText = "Chip " + juce::String(chip) + " " + juce::String(vIdx) + ": ";
         infoText += (v.inUse ? "ON  " : "OFF ");
@@ -201,8 +274,9 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
                   + " Ch=" + juce::String(v.midiChannel)
                   + " Vol=" + juce::String(v.volume)
                   + " Prg=" + juce::String(audioProcessor.getCurrentProgramForChannel(v.midiChannel))
+                  + " Pan=" + juce::String(panValues.first) + "/" + juce::String(panValues.second)
                   ;
-        g.drawFittedText(infoText, barStartX + barWidthMax + 10, y, 320, barHeight, juce::Justification::centredLeft, 1);
+        g.drawFittedText(infoText, panBarX + panBarWidth + 25, y, 400, barHeight, juce::Justification::centredLeft, 1);
     }
 
     // ドラムPCMチャンネル情報のグラフィカルなバー表示
@@ -356,12 +430,12 @@ void _3HSPlugAudioProcessorEditor::resized()
     auto bounds = getLocalBounds();
     
     // 左側600pxを既存のGUI用に確保
-    auto leftPanel = bounds.removeFromLeft(600);
+    //auto leftPanel = bounds.removeFromLeft(600);
     
     // 右側に16進ダンプビューアーを配置
-    if (hexDumpViewer != nullptr) {
-        hexDumpViewer->setBounds(bounds.reduced(5));
-    }
+    //if (hexDumpViewer != nullptr) {
+    //    hexDumpViewer->setBounds(bounds.reduced(5));
+    //}
     
     // オシロスコープは無効化
     //if (multiOscilloscope != nullptr) {
@@ -375,12 +449,12 @@ void _3HSPlugAudioProcessorEditor::timerCallback()
     repaint();
     
     // 16進ダンプビューアーにサウンドレジスタデータを送信
-    if (hexDumpViewer != nullptr) {
-        auto ramDump = audioProcessor.getRamDump();
-        if (!ramDump.empty()) {
-            hexDumpViewer->updateData(ramDump, 0x400000);
-        }
-    }
+    //if (hexDumpViewer != nullptr) {
+    //    auto ramDump = audioProcessor.getRamDump();
+    //    if (!ramDump.empty()) {
+    //        hexDumpViewer->updateData(ramDump, 0x400000);
+    //    }
+    //}
     
     // オシロスコープは無効化
     //if (multiOscilloscope != nullptr) {
