@@ -134,7 +134,7 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor (_3HSPlugAudioProcess
     addAndMakeVisible(*hexDumpViewer);
 
     // ウィンドウサイズを横側に拡張（既存の情報表示 + 16進ダンプビューアー）
-    setSize (1200, 950);
+    setSize (8, 950);
     setResizable(true, true);
     setResizeLimits(800, 600, 2560, 1440); // 最小サイズも調整
     startTimerHz(60); // 60HzでtimerCallback()を呼ぶ
@@ -219,8 +219,8 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
     int numChips = audioProcessor.getNumChips();
     int numVoices = audioProcessor.numVoices;
     // グラフィカルなバー表示
-    int barHeight = 20;
-    int barSpacing = 8;
+    int barHeight = 15;
+    int barSpacing = 4;
     int barWidthMax = 192;
     int barStartX = 10;
     int barStartY = 40;

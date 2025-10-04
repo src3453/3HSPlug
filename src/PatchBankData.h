@@ -37,6 +37,7 @@ struct Patch {
 
 // 例: 128個のパッチ定義（必要に応じて内容を編集）
 extern std::array<Patch, PATCH_BANK_SIZE> PatchBank;
+extern std::array<Patch, PATCH_BANK_SIZE> PatchBankOriginal;
 extern Patch defaultPatch; // デフォルトパッチ
 extern bool volumeScalingMap[13][8]; // volumeScalingMapをexternで宣言
 void initializePatchBank(const std::string& patchJsonPath = "patch_bank.json");
@@ -46,3 +47,5 @@ bool savePatchBankToYAML(const std::string& filePath);
 bool savePatchBankToJSON(const std::string& filePath);
 void exportCurrentPatchBankToJSON(); // 一時的な関数: 現在のPatchBankをJSONに書き出す
 Patch& getPatchOrDefault(int programNumber);
+void setPatchOverride(int patchNumber, int relativeAddr, int value);
+void resetPatchBank();

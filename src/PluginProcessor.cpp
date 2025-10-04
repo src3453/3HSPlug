@@ -17,6 +17,8 @@
 uint8_t* g_pcmRam = nullptr;
 size_t g_pcmRamSize = 0;
 
+#define DEFAULT_CHIP_COUNT 2
+
 
 // g_pcmRam → S3HS内蔵RAM転送
 void transferPcmRamToS3HS(std::vector<Byte>& s3hsRam) {
@@ -50,6 +52,7 @@ void _3HSPlugAudioProcessor::resetGM()
         channelSustainPedal[ch] = false; // サスティンペダルをリセット
         gsDrumChannels.clear(); // GSドラムチャンネルをクリア
     }
+    resetPatchBank(); // オーバーライドされたパッチをリセット
 }
 
 std::vector<DrumPcmChannelDebugInfo> _3HSPlugAudioProcessor::getDrumPcmChannelInfoAll() const
@@ -114,7 +117,7 @@ _3HSPlugAudioProcessor::_3HSPlugAudioProcessor()
 
         channelPitchBend.fill(0x2000);
         // サウンドチップ数を設定（初期値1、将来拡張可）
-        numChips = 2; // 例: 2チップ構成
+        numChips = DEFAULT_CHIP_COUNT; // 例: 2チップ構成
         s3hsSounds.resize(numChips);
         voiceSlots.resize(numChips * numVoices);
         displayBufferL.resize(numChips*12);
@@ -306,6 +309,25 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             }
             printf("\n");
         }
+
+        // 3HSPlug Patch Override (SysEx: F0 7D 33 48 00 <patch#(00~7F)> <relative addr(00~3F)> <data MSB(00~0F)> <data LSB(00~0F)> <checksum> F7)
+
+        if (msg.isSysEx() && msg.getSysExDataSize() == 8 && msg.getSysExData()[0] == 0x7D && 
+            msg.getSysExData()[1] == 0x33 && msg.getSysExData()[2] == 0x48 && msg.getSysExData()[3] == 0x00) {
+            const uint8* data = msg.getSysExData();
+            int patchNumber = data[4];
+            int relativeAddr = data[5];
+            int valueMSB = data[6];
+            int valueLSB = data[7];
+            int value = (valueMSB << 4) | valueLSB;
+            printf("[Patch Override] Patch %02X, Addr %02X, Value %02X\n", patchNumber, relativeAddr, value);
+            // パッチオーバーライド処理
+            if (patchNumber >= 0 && patchNumber < 128) {
+                setPatchOverride(patchNumber, relativeAddr, value);
+            }
+        }
+
+        // GM Reset (SysEx: F0 7E 7F 09 01 F7)
         if (msg.isSysEx() && msg.getSysExDataSize() == 4)
         {
             const uint8* data = msg.getSysExData();
@@ -334,7 +356,8 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             }
         }
         // CC#120 (All Sound Off) - GMリセットとは別処理
-        if (msg.isController() && msg.getControllerNumber() == 120 && msg.getControllerValue() == 0) {
+        // + CC#123 (All Notes Off)
+        if (msg.isController() && (msg.getControllerNumber() == 120 || msg.getControllerNumber() == 123) && msg.getControllerValue() == 0) {
             // All Sound Off: 指定チャンネルの音のみを停止
             int targetChannel = msg.getChannel();
             printf("[MIDI] All Sound Off at CH%d\n", targetChannel);

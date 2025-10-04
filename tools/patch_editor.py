@@ -319,7 +319,7 @@ class PatchEditor:
         # キーシフト
         ttk.Label(info_frame, text="Key shift:").grid(row=3, column=0, sticky=tk.W, padx=5, pady=2)
         self.keyshift_var = tk.IntVar()
-        self.keyshift_spinbox = ttk.Spinbox(info_frame, from_=-24, to=24, textvariable=self.keyshift_var,
+        self.keyshift_spinbox = ttk.Spinbox(info_frame, from_=-96, to=96, textvariable=self.keyshift_var,
                                            command=self.on_value_change, width=10)
         self.keyshift_spinbox.grid(row=3, column=1, padx=5, pady=2)
         self.keyshift_spinbox.bind('<Return>', self.on_value_change)

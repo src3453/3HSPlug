@@ -1,7 +1,6 @@
 
 
 #include "PatchBankData.h"
-#include <yaml-cpp/yaml.h>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -38,6 +37,8 @@ PatchBankの初期化と、プログラム番号に該当しない場合のフ�
 */
 
 std::array<Patch, PATCH_BANK_SIZE> PatchBank;
+std::array<Patch, PATCH_BANK_SIZE> PatchBankOriginal;
+
 Patch defaultPatch; // デフォルトパッチ
 
 void initializePatchBank(const std::string& patchJsonPath) {
@@ -62,6 +63,7 @@ void initializePatchBank(const std::string& patchJsonPath) {
     //exportCurrentPatchBankToJSON(); // 初期化後に現在のPatchBankをJSONに書き出す
     //std::cout << "PatchBank initialized and exported to JSON." << std::endl;
     loadPatchBankFromJSON(patchJsonPath); // 指定されたパスからパッチバンクを読み込む
+    PatchBankOriginal = PatchBank; // オリジナルのパッチバンクを保存
 }
 
 // 一時的な関数: 現在のPatchBankの内容をJSONファイルに書き出す
@@ -74,6 +76,9 @@ void exportCurrentPatchBankToJSON() {
     }
 }
 
+void resetPatchBank() {
+    PatchBank = PatchBankOriginal;
+}
 
 // プログラム番号に該当しない場合は0番パッチを返す
 Patch& getPatchOrDefault(int programNumber) {
@@ -83,6 +88,65 @@ Patch& getPatchOrDefault(int programNumber) {
     }
     //printf("[Warning::Patch] Patch %d not defined, returning default patch 0\n", programNumber);
     return defaultPatch; // デフォルトは0番パッチ
+}
+
+void setPatchOverride(int patchNumber, int relativeAddr, int value) {
+    if (patchNumber >= 0 && patchNumber < PATCH_BANK_SIZE) {
+        Patch& patch = PatchBank[patchNumber];
+        // オーバーライド処理
+        if (relativeAddr >= 0 && relativeAddr < 0x41) {
+            if (relativeAddr >= 0x02 && relativeAddr <= 0x0F)
+            {
+                if ((relativeAddr & 1) == 0) {
+                    patch.operators[relativeAddr/2].frequency &= 0x00FF;
+                    patch.operators[relativeAddr/2].frequency |= (value << 8);
+                } else// OP2-8 frequency MSB
+                {
+                    patch.operators[relativeAddr/2].frequency &= 0xFF00;
+                    patch.operators[relativeAddr/2].frequency |= value;
+                }// OP2-8 frequency LSB
+            }
+            if (relativeAddr >= 0x10 && relativeAddr <= 0x17)
+            {
+                // 音量レジスタのオーバーライド
+                patch.operators[relativeAddr - 0x10].volume = value;
+            }
+            if (relativeAddr >= 0x18 && relativeAddr <= 0x1B)
+            {
+                patch.operators[(relativeAddr - 0x18)*2].waveform = (value & 0xF0) >> 4; // 波形は4bitなので下位4ビットのみを設定
+                patch.operators[(relativeAddr - 0x18)*2 + 1].waveform = value & 0x0F; // MSBを設定
+            }
+            if (relativeAddr == 0x1C) {
+                    patch.modmode = value;
+            } 
+            if (relativeAddr == 0x1F) {
+                    patch.feedback = value;
+            }
+            if (relativeAddr >= 0x20 && relativeAddr <= 0x3F ) {
+                int modulo = relativeAddr % 4;
+                switch (modulo)
+                {
+                case 0:
+                    patch.operators[(relativeAddr - 0x20)/4].attack = value;
+                    break;
+                case 1:
+                    patch.operators[(relativeAddr - 0x20)/4].decay = value;
+                    break;
+                case 2:
+                    patch.operators[(relativeAddr - 0x20)/4].sustain = value;
+                    break;
+                case 3:
+                    patch.operators[(relativeAddr - 0x20)/4].release = value;
+                    break;
+                default:
+                    break;
+                }
+            }
+            if (relativeAddr == 0x40) {
+                patch.keyShift = static_cast<int8_t>(value); // キーシフトはint8_tなのでキャスト
+            }
+        }
+    }
 }
 
 // PatchクラスのtoRegValuesメソッドの実装
@@ -123,69 +187,6 @@ std::array<uint8_t, 64> Patch::toRegValues(uint8_t midiVolume) {
     return regs;
 }
 
-// YAMLからPatchBankを読み込む
-bool loadPatchBankFromYAML(const std::string& filePath) {
-    try {
-        YAML::Node config = YAML::LoadFile(filePath);
-        
-        if (!config["patches"]) {
-            std::cerr << "[PatchLoaderYAML] Error: YAML file does not contain 'patches' section" << std::endl;
-            return false;
-        }
-        
-        // まず全てのパッチを未定義状態にリセット
-        for (auto& patch : PatchBank) {
-            patch.defined = false;
-        }
-        
-        const YAML::Node& patches = config["patches"];
-        for (const auto& patchNode : patches) {
-            if (!patchNode["program"]) {
-                continue;
-            }
-            
-            int programNumber = patchNode["program"].as<int>();
-            if (programNumber < 0 || programNumber >= PATCH_BANK_SIZE) {
-                std::cerr << "[PatchLoaderYAML] Warning: Invalid program number " << programNumber << std::endl;
-                continue;
-            }
-            
-            Patch& patch = PatchBank[programNumber];
-            
-            // パッチの基本情報
-            patch.defined = true;
-            patch.modmode = patchNode["modmode"].as<uint8_t>(4);
-            patch.feedback = patchNode["feedback"].as<uint8_t>(0x80);
-            patch.keyShift = patchNode["keyShift"].as<int8_t>(0);
-            
-            // オペレーターデータ
-            if (patchNode["operators"]) {
-                const YAML::Node& operators = patchNode["operators"];
-                for (size_t i = 0; i < 8 && i < operators.size(); ++i) {
-                    const YAML::Node& op = operators[i];
-                    patch.operators[i].frequency = op["frequency"].as<uint16_t>(0);
-                    patch.operators[i].attack = op["attack"].as<uint8_t>(0);
-                    patch.operators[i].decay = op["decay"].as<uint8_t>(0);
-                    patch.operators[i].sustain = op["sustain"].as<uint8_t>(0);
-                    patch.operators[i].release = op["release"].as<uint8_t>(0);
-                    patch.operators[i].volume = op["volume"].as<uint8_t>(0);
-                    patch.operators[i].waveform = op["waveform"].as<uint8_t>(0);
-                }
-                printf("[PatchLoaderYAML] Loaded patch %d (has %d operator(s)).\n", programNumber, operators.size());
-            }
-        }
-
-        printf("[PatchLoaderYAML] Successfully loaded %d patch bank(s) from %s\n", patches.size(), filePath.c_str());
-        return true;
-        
-    } catch (const YAML::Exception& e) {
-        std::cerr << "[PatchLoaderYAML] YAML parsing error: " << e.what() << std::endl;
-        return false;
-    } catch (const std::exception& e) {
-        std::cerr << "[PatchLoaderYAML] Error loading patch bank: " << e.what() << std::endl;
-        return false;
-    }
-}
 
 // JSONからPatchBankを読み込む
 bool loadPatchBankFromJSON(const std::string& filePath) {
@@ -324,56 +325,6 @@ bool savePatchBankToJSON(const std::string& filePath) {
         
     } catch (const std::exception& e) {
         std::cerr << "[PatchLoaderJSON] Error saving patch bank: " << e.what() << std::endl;
-        return false;
-    }
-}
-
-// PatchBankをYAMLに保存する（既存の機能を維持）
-bool savePatchBankToYAML(const std::string& filePath) {
-    try {
-        YAML::Node config;
-        YAML::Node patches;
-        
-        for (int i = 0; i < PATCH_BANK_SIZE; ++i) {
-            const Patch& patch = PatchBank[i];
-            if (!patch.defined) {
-                continue;
-            }
-            
-            YAML::Node patchNode;
-            patchNode["program"] = i;
-            patchNode["modmode"] = static_cast<int>(patch.modmode);
-            patchNode["feedback"] = static_cast<int>(patch.feedback);
-            patchNode["keyShift"] = static_cast<int>(patch.keyShift);
-            
-            YAML::Node operators;
-            for (size_t j = 0; j < 8; ++j) {
-                const Operator& op = patch.operators[j];
-                YAML::Node opNode;
-                opNode["frequency"] = static_cast<int>(op.frequency);
-                opNode["attack"] = static_cast<int>(op.attack);
-                opNode["decay"] = static_cast<int>(op.decay);
-                opNode["sustain"] = static_cast<int>(op.sustain);
-                opNode["release"] = static_cast<int>(op.release);
-                opNode["volume"] = static_cast<int>(op.volume);
-                opNode["waveform"] = static_cast<int>(op.waveform);
-                operators.push_back(opNode);
-            }
-            patchNode["operators"] = operators;
-            patches.push_back(patchNode);
-        }
-        
-        config["patches"] = patches;
-        
-        std::ofstream fout(filePath);
-        fout << config;
-        fout.close();
-
-        std::cout << "[PatchLoaderYAML] Successfully saved patch bank to " << filePath << std::endl;
-        return true;
-        
-    } catch (const std::exception& e) {
-        std::cerr << "[PatchLoaderYAML] Error saving patch bank: " << e.what() << std::endl;
         return false;
     }
 }
