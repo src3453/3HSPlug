@@ -334,6 +334,21 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             if (data[0] == 0x7E && data[2] == 0x09 && data[3] == 0x01)
                 gmReset = true;
         }
+
+        // GS Reset (SysEx: F0 41 10 42 12 40 00 7F 00 41 F7)
+        if (msg.isSysEx() && msg.getSysExDataSize() == 9)
+        {
+            const uint8* data = msg.getSysExData();
+            if (data[0] == 0x41 && data[1] == 0x10 && data[2] == 0x42 &&
+                data[3] == 0x12 && data[4] == 0x40 && data[5] == 0x00 &&
+                data[6] == 0x7F && data[7] == 0x00 && data[8] == 0x41)
+            {
+                gmReset = true; // GSリセットもGMリセットとして扱う
+                gsDrumChannels.clear(); // GSドラムチャンネルをクリア
+                printf("[GS] GS Reset received, Drum channels cleared\n");
+            }
+        }
+
         // GS Drum Part SysEx (F0 41 10 42 12 40 1x 15 mm sum F7)
         if (msg.isSysEx() && (msg.getSysExDataSize() == 9))
         {
@@ -555,7 +570,8 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         v.volume = vol;
                         int baseAddr = 0x400000 + 0x40 * vIdx;
                         int bank = (baseAddr - 0x400000) / 0x40;
-                        auto regs = getPatchOrDefault(v.midiChannel-1).toRegValues(vol);
+                        int progIdx = currentProgram[v.midiChannel-1];
+                        auto regs = getPatchOrDefault(progIdx).toRegValues(vol);
                         
                         for (size_t i = 0x10; i < 0x18; ++i) {
                         s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + static_cast<int>(i), regs[i]);
@@ -930,6 +946,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     uint8 right = static_cast<uint8>(std::round(panNorm * 15.0f));
                     uint8 panReg = (left << 4) | (right & 0x0F);
                     bank = (baseAddr - 0x400000) / 0x40;
+                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x1D, panReg); // パンレジスタ書き込み
                     s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x00, (freqInt >> 8) & 0xFF); // OP1 周波数 上位ビット
                     s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x01, freqInt & 0xFF);   // OP1 周波数 下位ビット
                     /*s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x02, 0x10); // OP2 周波数倍率 上位ビット
