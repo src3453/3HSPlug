@@ -5,6 +5,7 @@
 #include <string>
 
 #define PATCH_BANK_SIZE 128
+#define MAX_BANKS 128  // 最大バンク数（GSバンク対応）
 
 
 
@@ -35,17 +36,22 @@ struct Patch {
     std::array<uint8_t, 64> toRegValues(uint8_t midiVolume = 255);
 };
 
-// 例: 128個のパッチ定義（必要に応じて内容を編集）
-extern std::array<Patch, PATCH_BANK_SIZE> PatchBank;
-extern std::array<Patch, PATCH_BANK_SIZE> PatchBankOriginal;
+// バンクごとのパッチ定義（GSバンク対応）
+extern std::array<std::array<Patch, PATCH_BANK_SIZE>, MAX_BANKS> PatchBanks;
+extern std::array<std::array<Patch, PATCH_BANK_SIZE>, MAX_BANKS> PatchBanksOriginal;
 extern Patch defaultPatch; // デフォルトパッチ
 extern bool volumeScalingMap[13][8]; // volumeScalingMapをexternで宣言
-void initializePatchBank(const std::string& patchJsonPath = "patch_bank.json");
+
+
+void initializePatchBanks(const std::string& patchesDir = "patches/");
 bool loadPatchBankFromYAML(const std::string& filePath);
-bool loadPatchBankFromJSON(const std::string& filePath);
+bool loadPatchBankFromJSON(const std::string& filePath, int bankNumber = 0);
 bool savePatchBankToYAML(const std::string& filePath);
-bool savePatchBankToJSON(const std::string& filePath);
+bool savePatchBankToJSON(const std::string& filePath, int bankNumber = 0);
 void exportCurrentPatchBankToJSON(); // 一時的な関数: 現在のPatchBankをJSONに書き出す
-Patch& getPatchOrDefault(int programNumber);
-void setPatchOverride(int patchNumber, int relativeAddr, int value);
-void resetPatchBank();
+Patch& getPatchOrDefault(int bankNumber, int programNumber);
+void setPatchOverride(int bankNumber, int patchNumber, int relativeAddr, int value);
+void resetPatchBanks();
+
+// 代理発音関連（バンク0へのフォールバック）
+Patch& getEffectivePatch(int bankNumber, int programNumber);

@@ -69,7 +69,9 @@ public:
     void initializeProcessor();
 
     // 指定チャンネルの現在のプログラム番号を取得
-    int getCurrentProgramForChannel(int channel) const;
+    int getCurrentProgramForChannel(int channel) const; // プログラムチェンジ
+    int getCurrentProgramBankForChannel(int channel) const; // バンクMSB
+
 
     //==============================================================================
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -168,6 +170,7 @@ private:
     // パッチバンク機能
     // std::vector<Patch> patchBank = std::vector<Patch>(128); // 外部定義に切り替え
     std::array<int, 16> currentProgram{{0}};
+    std::array<int, 16> currentBank{{0}};          // 各チャンネルの現在のバンク番号
 
     // ピッチベンド・レンジ・キーシフト
     std::array<int, 16> channelPitchBend{};        // -8192～+8191

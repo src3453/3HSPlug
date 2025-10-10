@@ -273,7 +273,7 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
         infoText += "Note=" + juce::String(v.noteNumber)
                   + " Ch=" + juce::String(v.midiChannel)
                   + " Vol=" + juce::String(v.volume)
-                  + " Prg=" + juce::String(audioProcessor.getCurrentProgramForChannel(v.midiChannel))
+                  + " Prg=" + juce::String(audioProcessor.getCurrentProgramBankForChannel(v.midiChannel)) + ":" + juce::String(audioProcessor.getCurrentProgramForChannel(v.midiChannel))
                   + " Pan=" + juce::String(panValues.first) + "/" + juce::String(panValues.second)
                   ;
         g.drawFittedText(infoText, panBarX + panBarWidth + 25, y, 400, barHeight, juce::Justification::centredLeft, 1);

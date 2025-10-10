@@ -47,12 +47,13 @@ void _3HSPlugAudioProcessor::resetGM()
         channelRpnMsb[ch] = 0; // RPN MSBをリセット
         channelRpnLsb[ch] = 0; // RPN LSBをリセット
         currentProgram[ch] = 0; // プログラム番号を0にリセット
+        currentBank[ch] = 0; // バンク番号を0にリセット
         channelSustainPedal[ch] = false; // サスティンペダルをリセット
         heldNotes[ch].clear(); // ホールドノートをクリア
         channelSustainPedal[ch] = false; // サスティンペダルをリセット
         gsDrumChannels.clear(); // GSドラムチャンネルをクリア
     }
-    resetPatchBank(); // オーバーライドされたパッチをリセット
+    resetPatchBanks(); // オーバーライドされたパッチをリセット
 }
 
 std::vector<DrumPcmChannelDebugInfo> _3HSPlugAudioProcessor::getDrumPcmChannelInfoAll() const
@@ -142,7 +143,7 @@ _3HSPlugAudioProcessor::_3HSPlugAudioProcessor()
             transferPcmRamToS3HS(s3hsSounds[chip].ram);
             printf("[DrumPCM] PCM RAM transferred to chip %d\n", chip);
         }
-        initializePatchBank(); // パッチバンク初期化
+        initializePatchBanks(); // パッチバンク初期化
         resetGM(); // GMリセット
         
 }
@@ -216,6 +217,13 @@ int _3HSPlugAudioProcessor::getCurrentProgramForChannel(int channel) const
 {
     if (channel >= 0 && channel < 16)
         return currentProgram[channel];
+    return 0;
+}
+
+int _3HSPlugAudioProcessor::getCurrentProgramBankForChannel(int channel) const
+{
+    if (channel >= 0 && channel < 16)
+        return currentBank[channel];
     return 0;
 }
 
@@ -323,7 +331,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             printf("[Patch Override] Patch %02X, Addr %02X, Value %02X\n", patchNumber, relativeAddr, value);
             // パッチオーバーライド処理
             if (patchNumber >= 0 && patchNumber < 128) {
-                setPatchOverride(patchNumber, relativeAddr, value);
+                setPatchOverride(0, patchNumber, relativeAddr, value); // デフォルトでバンク0を使用
             }
         }
 
@@ -521,6 +529,20 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         if (msg.isController()) { // MIDI CCメッセージを解析し、必要に応じてレジスタを更新する
             this->channelCC[ch][msg.getControllerNumber()] = msg.getControllerValue();
             
+            // CC#0 (Bank Select MSB) 処理 - バンク変更 (例: 008:080: Sine Wave)
+            if (msg.getControllerNumber() == 0) {
+                int bankMSB = msg.getControllerValue();
+                currentBank[ch - 1] = bankMSB;
+                printf("[MIDI] Bank Select MSB CH%d: %d (Bank: %d)\n", ch, bankMSB, currentBank[ch - 1]);
+            }
+            
+            // CC#32 (Bank Select LSB) 処理 - バンクには使用しない
+            /*if (msg.getControllerNumber() == 32) {
+                int bankLSB = msg.getControllerValue();
+                currentBank[ch - 1] = bankLSB;
+                printf("[MIDI] Bank Select LSB CH%d: %d (Bank: %d)\n", ch, bankLSB, currentBank[ch - 1]);
+            }*/
+            
             // CC#64 (Sustain Pedal) 処理
             if (msg.getControllerNumber() == 64) {
                 bool newSustainState = msg.getControllerValue() >= 64;
@@ -571,7 +593,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         int baseAddr = 0x400000 + 0x40 * vIdx;
                         int bank = (baseAddr - 0x400000) / 0x40;
                         int progIdx = currentProgram[v.midiChannel-1];
-                        auto regs = getPatchOrDefault(progIdx).toRegValues(vol);
+                        auto regs = getEffectivePatch(currentBank[ch-1], progIdx).toRegValues(vol);
                         
                         for (size_t i = 0x10; i < 0x18; ++i) {
                         s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + static_cast<int>(i), regs[i]);
@@ -716,7 +738,14 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 int ch = msg.getChannel() - 1;
                 if (ch >= 0 && ch < 16) {
                     currentProgram[ch] = prog;
-                    printf("[MIDI] Program Change: %d, ch %d\n", prog, msg.getChannel());
+                    int bank = currentBank[ch];
+                    printf("[MIDI] Program Change: Bank %d, Program %d, CH %d\n", bank, prog, msg.getChannel());
+                    
+                    // 代理発音の確認
+                    auto& effectivePatch = getEffectivePatch(bank, prog);
+                    if (bank != 0 && !PatchBanks[bank][prog].defined && PatchBanks[0][prog].defined) {
+                        printf("[PatchBank] Using fallback from Bank 0 for Bank %d Program %d\n", bank, prog);
+                    }
                 }
             }
         }
@@ -833,7 +862,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2; // デフォルト2
 
                 int progIdx = currentProgram[ch-1];
-                auto patch = getPatchOrDefault(progIdx);
+                auto patch = getEffectivePatch(currentBank[ch-1], progIdx);
                 int totalKeyShift = keyShift + patch.keyShift;
 
                 float bendSemis = bendRange * (static_cast<float>(bend) / 8192.0f);
@@ -966,7 +995,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             // Note ONと同様にkeyShiftを計算
             int keyShift = (ch >= 1 && ch <= 16) ? channelKeyShift[ch - 1] : 0;
             int progIdx = currentProgram[ch-1];
-            auto patch = getPatchOrDefault(progIdx);
+            auto patch = getEffectivePatch(currentBank[ch-1], progIdx);
             int totalKeyShift = keyShift + patch.keyShift;
             int adjustedNote = note + totalKeyShift;
             

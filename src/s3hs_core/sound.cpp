@@ -72,7 +72,10 @@ public:
         return sin((float)theta*2*M_PI);
     }
 
-    float modulate(float theta, int wf) {
+    float modulate(float theta, int wf, float volume) {
+        if (volume <= 0.000001f) {
+            return 0.0f;
+        }
         const float scale = 256.0 / S3HS_SAMPLE_FREQ;
         const float scaledTheta = theta * scale;
         
@@ -80,14 +83,7 @@ public:
         const int index = ((int)scaledTheta) & 0xff;
 
         const float pre = sintable[wf][index];
-        return pre;
-
-    }
-
-    float generateFMWave(float t1, float v1, float t2, float v2, float t3, float v3, float t4, float v4, int w1, int w2, int w3, int w4) {
-
-        float value = modulate(t1+modulate(t2+modulate(t3+modulate(t4,w4)*v4,w3)*v3,w2)*v2,w1)*v1*255*127;
-        return value;
+        return pre * volume;
 
     }
 
@@ -104,88 +100,88 @@ public:
         switch (mode)
         {
         case 0:
-            value = (modulate(t1,w1)*v1+modulate(t2,w2)*v2+modulate(t3,w3)*v3+modulate(t4,w4)*v4+
-                    modulate(t5,w5)*v5+modulate(t6,w6)*v6+modulate(t7,w7)*v7+modulate(t8,w8)*v8+feedback)*255*127; //Additive
+            value = (modulate(t1,w1,v1)+modulate(t2,w2,v2)+modulate(t3,w3,v3)+modulate(t4,w4,v4)+
+                    modulate(t5,w5,v5)+modulate(t6,w6,v6)+modulate(t7,w7,v7)+modulate(t8,w8,v8)+feedback)*255*127; //Additive
             break;
         case 1:
-            phase = (modulate(t5,w5)*v5+modulate(t6,w6)*v6+modulate(t7,w7)*v7+modulate(t8,w8)*v8+feedback)*4*S3HS_SAMPLE_FREQ;
-            value = (modulate(t1+phase,w1)*v1+modulate(t2+phase,w2)*v2+modulate(t3+phase,w3)*v3+modulate(t4+phase,w4)*v4)*255*127; //FM2op
+            phase = (modulate(t5,w5,v5)+modulate(t6,w6,v6)+modulate(t7,w7,v7)+modulate(t8,w8,v8)+feedback)*4*S3HS_SAMPLE_FREQ;
+            value = (modulate(t1+phase,w1,v1)+modulate(t2+phase,w2,v2)+modulate(t3+phase,w3,v3)+modulate(t4+phase,w4,v4))*255*127; //FM2op
             break;
         case 2:
-            value = ((modulate(t1,w1)*v1+modulate(t2,w2)*v2+modulate(t3,w3)*v3+modulate(t4,w4)*v4)*
-                    (modulate(t5,w5)*v5+modulate(t6,w6)*v6+modulate(t7,w7)*v7+modulate(t8,w8)*v8)+feedback)*255*127; //RingMod
+            value = ((modulate(t1,w1,v1)+modulate(t2,w2,v2)+modulate(t3,w3,v3)+modulate(t4,w4,v4))*
+                    (modulate(t5,w5,v5)+modulate(t6,w6,v6)+modulate(t7,w7,v7)+modulate(t8,w8,v8))+feedback)*255*127; //RingMod
             break;
         case 3:
-            phase  = (modulate(t7,w7)*v7+modulate(t8,w8)*v8)*4*S3HS_SAMPLE_FREQ;
-            phase2 = (modulate(t5+phase,w5)*v5+modulate(t6+phase,w6)*v6)*4*S3HS_SAMPLE_FREQ;
-            phase3 = (modulate(t3+phase2,w3)*v3+modulate(t4+phase2,w4)*v4+feedback)*4*S3HS_SAMPLE_FREQ;
-            value = (modulate(t1+phase3,w1)*v1+modulate(t2+phase3,w2)*v2)*255*127; //FM4op
+            phase  = (modulate(t7,w7,v7)+modulate(t8,w8,v8))*4*S3HS_SAMPLE_FREQ;
+            phase2 = (modulate(t5+phase,w5,v5)+modulate(t6+phase,w6,v6))*4*S3HS_SAMPLE_FREQ;
+            phase3 = (modulate(t3+phase2,w3,v3)+modulate(t4+phase2,w4,v4)+feedback)*4*S3HS_SAMPLE_FREQ;
+            value = (modulate(t1+phase3,w1,v1)+modulate(t2+phase3,w2,v2))*255*127; //FM4op
             break;
         case 4:
-            phase = (modulate(t8,w8)*v8)*4*S3HS_SAMPLE_FREQ;
-            phase2 = (modulate(t7+phase,w7)*v7)*4*S3HS_SAMPLE_FREQ;
-            phase3 = (modulate(t6+phase2,w6)*v6)*4*S3HS_SAMPLE_FREQ;
-            phase4 = (modulate(t5+phase3,w5)*v5)*4*S3HS_SAMPLE_FREQ;
-            phase5 = (modulate(t4+phase4,w4)*v4)*4*S3HS_SAMPLE_FREQ;
-            phase6 = (modulate(t3+phase5,w3)*v3)*4*S3HS_SAMPLE_FREQ;
-            phase7 = (modulate(t2+phase6,w2)*v2+feedback)*4*S3HS_SAMPLE_FREQ;
-            value = (modulate(t1+phase7,w1)*v1)*255*127; //FM8op
+            phase = (modulate(t8,w8,v8))*4*S3HS_SAMPLE_FREQ;
+            phase2 = (modulate(t7+phase,w7,v7))*4*S3HS_SAMPLE_FREQ;
+            phase3 = (modulate(t6+phase2,w6,v6))*4*S3HS_SAMPLE_FREQ;
+            phase4 = (modulate(t5+phase3,w5,v5))*4*S3HS_SAMPLE_FREQ;
+            phase5 = (modulate(t4+phase4,w4,v4))*4*S3HS_SAMPLE_FREQ;
+            phase6 = (modulate(t3+phase5,w3,v3))*4*S3HS_SAMPLE_FREQ;
+            phase7 = (modulate(t2+phase6,w2,v2)+feedback)*4*S3HS_SAMPLE_FREQ;
+            value = (modulate(t1+phase7,w1,v1))*255*127; //FM8op
             break;
         case 5:
-            phase = (modulate(t8,w8)*v8)*4*S3HS_SAMPLE_FREQ;
-            phase2 = (modulate(t7+phase,w7)*v7)*4*S3HS_SAMPLE_FREQ;
-            phase3 = (modulate(t6+phase2,w6)*v6)*4*S3HS_SAMPLE_FREQ;
-            phase5 = (modulate(t4,w4)*v4)*4*S3HS_SAMPLE_FREQ;
-            phase6 = (modulate(t3+phase5,w3)*v3)*4*S3HS_SAMPLE_FREQ;
-            phase7 = (modulate(t2+phase6,w2)*v2+feedback)*4*S3HS_SAMPLE_FREQ;
-            value = (modulate(t5+phase3,w5)*v5+modulate(t1+phase7,w1)*v1)*255*127; //FM4opx2
+            phase = (modulate(t8,w8,v8))*4*S3HS_SAMPLE_FREQ;
+            phase2 = (modulate(t7+phase,w7,v7))*4*S3HS_SAMPLE_FREQ;
+            phase3 = (modulate(t6+phase2,w6,v6))*4*S3HS_SAMPLE_FREQ;
+            phase5 = (modulate(t4,w4,v4))*4*S3HS_SAMPLE_FREQ;
+            phase6 = (modulate(t3+phase5,w3,v3))*4*S3HS_SAMPLE_FREQ;
+            phase7 = (modulate(t2+phase6,w2,v2)+feedback)*4*S3HS_SAMPLE_FREQ;
+            value = (modulate(t5+phase3,w5,v5)+modulate(t1+phase7,w1,v1))*255*127; //FM4opx2
             break;
         case 6:
-            phase = (modulate(t8,w8)*v8)*4*S3HS_SAMPLE_FREQ;
-            phase3 = (modulate(t6,w6)*v6)*4*S3HS_SAMPLE_FREQ;
-            phase5 = (modulate(t4,w4)*v4)*4*S3HS_SAMPLE_FREQ;
-            phase7 = (modulate(t2,w2)*v2+feedback)*4*S3HS_SAMPLE_FREQ;
-            value = (modulate(t1+phase7,w1)*v1+modulate(t7+phase,w7)*v7+modulate(t5+phase3,w5)*v5+modulate(t3+phase5,w3)*v3)*255*127; //FM2opx4
+            phase = (modulate(t8,w8,v8))*4*S3HS_SAMPLE_FREQ;
+            phase3 = (modulate(t6,w6,v6))*4*S3HS_SAMPLE_FREQ;
+            phase5 = (modulate(t4,w4,v4))*4*S3HS_SAMPLE_FREQ;
+            phase7 = (modulate(t2,w2,v2)+feedback)*4*S3HS_SAMPLE_FREQ;
+            value = (modulate(t1+phase7,w1,v1)+modulate(t7+phase,w7,v7)+modulate(t5+phase3,w5,v5)+modulate(t3+phase5,w3,v3))*255*127; //FM2opx4
             break;
         case 7:
-            phase = (modulate(t8,w8)*v8)*4*S3HS_SAMPLE_FREQ;
-            phase2 = (modulate(t7+phase,w7)*v7)*4*S3HS_SAMPLE_FREQ;
-            phase3 = (modulate(t6+phase2,w6)*v6)*4*S3HS_SAMPLE_FREQ;
-            phase5 = (modulate(t4,w4)*v4)*4*S3HS_SAMPLE_FREQ;
-            phase6 = (modulate(t3+phase5,w3)*v3)*4*S3HS_SAMPLE_FREQ;
-            phase7 = (modulate(t2+phase6,w2)*v2+feedback)*4*S3HS_SAMPLE_FREQ;
-            value = (modulate(t5+phase3,w5)*v5*modulate(t1+phase7,w1)*v1)*255*127; //FM4opxRM2
+            phase = (modulate(t8,w8,v8))*4*S3HS_SAMPLE_FREQ;
+            phase2 = (modulate(t7+phase,w7,v7))*4*S3HS_SAMPLE_FREQ;
+            phase3 = (modulate(t6+phase2,w6,v6))*4*S3HS_SAMPLE_FREQ;
+            phase5 = (modulate(t4,w4,v4))*4*S3HS_SAMPLE_FREQ;
+            phase6 = (modulate(t3+phase5,w3,v3))*4*S3HS_SAMPLE_FREQ;
+            phase7 = (modulate(t2+phase6,w2,v2)+feedback)*4*S3HS_SAMPLE_FREQ;
+            value = (modulate(t5+phase3,w5,v5)*v5*modulate(t1+phase7,w1,v1)*v1)*255*127; //FM4opxRM2
             break;
         case 8:
-            value = ((modulate(t1,w1)*v1+modulate(t2,w2)*v2)*(modulate(t3,w3)*v3+modulate(t4,w4)*v4)*
-                    (modulate(t5,w5)*v5+modulate(t6,w6)*v6)*(modulate(t7,w7)*v7+modulate(t8,w8)*v8)+feedback)*255*127; //RingModx4
+            value = ((modulate(t1,w1,v1)*v1+modulate(t2,w2,v2)*v2)*(modulate(t3,w3,v3)*v3+modulate(t4,w4,v4)*v4)*
+                    (modulate(t5,w5,v5)*v5+modulate(t6,w6,v6)*v6)*(modulate(t7,w7,v7)*v7+modulate(t8,w8,v8)*v8)+feedback)*255*127; //RingModx4
             break;
         case 9:
-            phase = (modulate(t8,w8)*v8)*4*S3HS_SAMPLE_FREQ;
-            phase3 = (modulate(t6,w6)*v6)*4*S3HS_SAMPLE_FREQ;
-            phase5 = (modulate(t4,w4)*v4)*4*S3HS_SAMPLE_FREQ;
-            phase7 = (modulate(t2,w2)*v2+feedback)*4*S3HS_SAMPLE_FREQ;
-            value = (modulate(t1+phase7,w1)*v1*modulate(t7+phase,w7)*v7*modulate(t5+phase3,w5)*v5*modulate(t3+phase5,w3)*v3)*255*127; //FM2opxRM4
+            phase = (modulate(t8,w8,v8)*v8)*4*S3HS_SAMPLE_FREQ;
+            phase3 = (modulate(t6,w6,v6)*v6)*4*S3HS_SAMPLE_FREQ;
+            phase5 = (modulate(t4,w4,v4)*v4)*4*S3HS_SAMPLE_FREQ;
+            phase7 = (modulate(t2,w2,v2)*v2+feedback)*4*S3HS_SAMPLE_FREQ;
+            value = (modulate(t1+phase7,w1,v1)*v1*modulate(t7+phase,w7,v7)*v7*modulate(t5+phase3,w5,v5)*v5*modulate(t3+phase5,w3,v3)*v3)*255*127; //FM2opxRM4
             break;
         case 10:
-            phase = (modulate(t5,w5)*v5+modulate(t6,w6)*v6+modulate(t7,w7)*v7+modulate(t8,w8)*v8+feedback)*4*S3HS_SAMPLE_FREQ;
-            value = (modulate(phase,w1)*v1+modulate(phase,w2)*v2+modulate(phase,w3)*v3+modulate(phase,w4)*v4)*255*127; //DirectPhase2op
+            phase = (modulate(t5,w5,v5)*v5+modulate(t6,w6,v6)*v6+modulate(t7,w7,v7)*v7+modulate(t8,w8,v8)*v8+feedback)*4*S3HS_SAMPLE_FREQ;
+            value = (modulate(phase,w1,v1)*v1+modulate(phase,w2,v2)*v2+modulate(phase,w3,v3)*v3+modulate(phase,w4,v4)*v4)*255*127; //DirectPhase2op
             break;
         case 11:
-            phase  = (modulate(t7,w7)*v7+modulate(t8,w8)*v8)*4*S3HS_SAMPLE_FREQ;
-            phase2 = (modulate(phase,w5)*v5+modulate(phase,w6)*v6)*4*S3HS_SAMPLE_FREQ;
-            phase3 = (modulate(phase2,w3)*v3+modulate(phase2,w4)*v4+feedback)*4*S3HS_SAMPLE_FREQ;
-            value = (modulate(phase3,w1)*v1+modulate(phase3,w2)*v2)*255*127; //DirectPhase4op
+            phase  = (modulate(t7,w7,v7)*v7+modulate(t8,w8,v8)*v8)*4*S3HS_SAMPLE_FREQ;
+            phase2 = (modulate(phase,w5,v5)*v5+modulate(phase,w6,v6)*v6)*4*S3HS_SAMPLE_FREQ;
+            phase3 = (modulate(phase2,w3,v3)*v3+modulate(phase2,w4,v4)*v4+feedback)*4*S3HS_SAMPLE_FREQ;
+            value = (modulate(phase3,w1,v1)*v1+modulate(phase3,w2,v2)*v2)*255*127; //DirectPhase4op
             break;
         case 12:
-            phase = (modulate(t8,w8)*v8)*4*S3HS_SAMPLE_FREQ;
-            phase2 = (modulate(phase,w7)*v7)*4*S3HS_SAMPLE_FREQ;
-            phase3 = (modulate(phase2,w6)*v6)*4*S3HS_SAMPLE_FREQ;
-            phase4 = (modulate(phase3,w5)*v5)*4*S3HS_SAMPLE_FREQ;
-            phase5 = (modulate(phase4,w4)*v4)*4*S3HS_SAMPLE_FREQ;
-            phase6 = (modulate(phase5,w3)*v3)*4*S3HS_SAMPLE_FREQ;
-            phase7 = (modulate(phase6,w2)*v2+feedback)*4*S3HS_SAMPLE_FREQ;
-            value = (modulate(phase7,w1)*v1)*255*127; //DirectPhase8OP
+            phase = (modulate(t8,w8,v8)*v8)*4*S3HS_SAMPLE_FREQ;
+            phase2 = (modulate(phase,w7,v7)*v7)*4*S3HS_SAMPLE_FREQ;
+            phase3 = (modulate(phase2,w6,v6)*v6)*4*S3HS_SAMPLE_FREQ;
+            phase4 = (modulate(phase3,w5,v5)*v5)*4*S3HS_SAMPLE_FREQ;
+            phase5 = (modulate(phase4,w4,v4)*v4)*4*S3HS_SAMPLE_FREQ;
+            phase6 = (modulate(phase5,w3,v3)*v3)*4*S3HS_SAMPLE_FREQ;
+            phase7 = (modulate(phase6,w2,v2)*v2+feedback)*4*S3HS_SAMPLE_FREQ;
+            value = (modulate(phase7,w1,v1)*v1)*255*127; //DirectPhase8OP
             break;
         default:
             break;
@@ -264,7 +260,7 @@ public:
                 sintable.at(wf).at(i) = (signed char)(val);
             }
         }*/
-        for (int wf=10; wf<14; wf++) {
+        /*for (int wf=10; wf<14; wf++) {
             for (int i=0; i<256; i++) {
                 float pre = (float)regwt.at(16+48*(wf-10)+((int)(i/8)%32));
                 float nxt = (float)regwt.at(16+48*(wf-10)+((int)(((float)i/8)+1)%32));
@@ -272,7 +268,7 @@ public:
                 val -= 128;
                 sintable.at(wf).at(i) = (signed char)(val);
             }
-        }
+        }*/
         for (i = 0; i < framesize * OVERSAMPLE_MULT; i++) {
             float result[12] = {0};
             for(int ch=0; ch < 8; ch++) {
@@ -471,8 +467,8 @@ public:
                     frames[0][ch][i/OVERSAMPLE_MULT] += result[ch]*((float)(panL)/15)/OVERSAMPLE_MULT;
                     frames[1][ch][i/OVERSAMPLE_MULT] += result[ch]*((float)(panR)/15)/OVERSAMPLE_MULT;
                     if (ch >= 8) {
-                        outL[i/OVERSAMPLE_MULT] += result[ch]*((float)(panL)/15)/OVERSAMPLE_MULT/32768.0f*2.0f;
-                        outR[i/OVERSAMPLE_MULT] += result[ch]*((float)(panR)/15)/OVERSAMPLE_MULT/32768.0f*2.0f;
+                        outL[i/OVERSAMPLE_MULT] += result[ch]*((float)(panL)/15)/OVERSAMPLE_MULT/32768.0f*1.3f;
+                        outR[i/OVERSAMPLE_MULT] += result[ch]*((float)(panR)/15)/OVERSAMPLE_MULT/32768.0f*1.3f;
                     } else {
                         outL[i/OVERSAMPLE_MULT] += result[ch]*((float)(panL)/15)/OVERSAMPLE_MULT/32768.0f;
                         outR[i/OVERSAMPLE_MULT] += result[ch]*((float)(panR)/15)/OVERSAMPLE_MULT/32768.0f;
