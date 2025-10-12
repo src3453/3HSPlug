@@ -196,7 +196,7 @@ public:
         // 2025/1/24 add exponential decay
         float ADSRfactor = 1.5;
         adsr.attackTime = ((float)reg.at(32+64*ch+opNum*4+0))/64*0.33;
-        adsr.attackTime = adsr.attackTime==0?0/64*1.5:adsr.attackTime;
+        adsr.attackTime = (adsr.attackTime==0?0/64*1.5:adsr.attackTime);
         adsr.decayTime = ((float)reg.at(32+64*ch+opNum*4+1))/64*1.5;
         adsr.decayTime = adsr.decayTime==0?0.5/64*1.5:adsr.decayTime;
         adsr.sustainLevel = ((float)reg.at(32+64*ch+opNum*4+2))/255;

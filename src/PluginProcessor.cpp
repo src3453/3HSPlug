@@ -17,7 +17,7 @@
 uint8_t* g_pcmRam = nullptr;
 size_t g_pcmRamSize = 0;
 
-#define DEFAULT_CHIP_COUNT 2
+#define DEFAULT_CHIP_COUNT 3
 
 
 // g_pcmRam → S3HS内蔵RAM転送
@@ -215,15 +215,15 @@ void _3HSPlugAudioProcessor::setCurrentProgram (int index)
 
 int _3HSPlugAudioProcessor::getCurrentProgramForChannel(int channel) const
 {
-    if (channel >= 0 && channel < 16)
-        return currentProgram[channel];
+    if (channel >= 1 && channel <= 16)
+        return currentProgram[channel-1];
     return 0;
 }
 
 int _3HSPlugAudioProcessor::getCurrentProgramBankForChannel(int channel) const
 {
-    if (channel >= 0 && channel < 16)
-        return currentBank[channel];
+    if (channel >= 1 && channel <= 16)
+        return currentBank[channel-1];
     return 0;
 }
 
@@ -533,14 +533,14 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             if (msg.getControllerNumber() == 0) {
                 int bankMSB = msg.getControllerValue();
                 currentBank[ch - 1] = bankMSB;
-                printf("[MIDI] Bank Select MSB CH%d: %d (Bank: %d)\n", ch, bankMSB, currentBank[ch - 1]);
+                printf("[GS] Bank Select MSB CH%d: %d (Bank: %d)\n", ch, bankMSB, currentBank[ch - 1]);
             }
             
             // CC#32 (Bank Select LSB) 処理 - バンクには使用しない
             /*if (msg.getControllerNumber() == 32) {
                 int bankLSB = msg.getControllerValue();
                 currentBank[ch - 1] = bankLSB;
-                printf("[MIDI] Bank Select LSB CH%d: %d (Bank: %d)\n", ch, bankLSB, currentBank[ch - 1]);
+                printf("[GS] Bank Select LSB CH%d: %d (Bank: %d)\n", ch, bankLSB, currentBank[ch - 1]);
             }*/
             
             // CC#64 (Sustain Pedal) 処理
