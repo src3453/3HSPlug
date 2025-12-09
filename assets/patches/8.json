@@ -1,6 +1,76 @@
 {
   "patches": [
     {
+      "program": 4,
+      "modmode": 4,
+      "feedback": 131,
+      "keyShift": 0,
+      "operators": [
+        {
+          "frequency": 0,
+          "attack": 0,
+          "decay": 64,
+          "sustain": 0,
+          "release": 1,
+          "volume": 255,
+          "waveform": 0
+        },
+        {
+          "frequency": 12288,
+          "attack": 0,
+          "decay": 64,
+          "sustain": 0,
+          "release": 1,
+          "volume": 12,
+          "waveform": 0
+        },
+        {
+          "frequency": 0,
+          "attack": 0,
+          "decay": 0,
+          "sustain": 0,
+          "release": 0,
+          "volume": 0,
+          "waveform": 0
+        }
+      ]
+    },
+    {
+      "program": 5,
+      "modmode": 4,
+      "feedback": 131,
+      "keyShift": 0,
+      "operators": [
+        {
+          "frequency": 0,
+          "attack": 0,
+          "decay": 64,
+          "sustain": 0,
+          "release": 4,
+          "volume": 255,
+          "waveform": 0
+        },
+        {
+          "frequency": 3970,
+          "attack": 0,
+          "decay": 10,
+          "sustain": 125,
+          "release": 4,
+          "volume": 16,
+          "waveform": 2
+        },
+        {
+          "frequency": 0,
+          "attack": 0,
+          "decay": 0,
+          "sustain": 0,
+          "release": 0,
+          "volume": 0,
+          "waveform": 0
+        }
+      ]
+    },
+    {
       "program": 80,
       "modmode": 0,
       "feedback": 128,
@@ -10,7 +80,7 @@
           "frequency": 0,
           "attack": 0,
           "decay": 1,
-          "sustain": 128,
+          "sustain": 255,
           "release": 0,
           "volume": 255,
           "waveform": 0
@@ -23,6 +93,32 @@
           "release": 0,
           "volume": 0,
           "waveform": 0
+        }
+      ]
+    },
+    {
+      "program": 81,
+      "modmode": 0,
+      "feedback": 128,
+      "keyShift": 0,
+      "operators": [
+        {
+          "frequency": 0,
+          "attack": 0,
+          "decay": 1,
+          "sustain": 128,
+          "release": 0,
+          "volume": 192,
+          "waveform": 5
+        },
+        {
+          "frequency": 4112,
+          "attack": 0,
+          "decay": 1,
+          "sustain": 128,
+          "release": 0,
+          "volume": 192,
+          "waveform": 3
         }
       ]
     }

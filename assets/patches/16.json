@@ -1,0 +1,39 @@
+{
+  "patches": [
+    {
+      "program": 4,
+      "modmode": 4,
+      "feedback": 131,
+      "keyShift": 0,
+      "operators": [
+        {
+          "frequency": 0,
+          "attack": 0,
+          "decay": 64,
+          "sustain": 0,
+          "release": 1,
+          "volume": 255,
+          "waveform": 0
+        },
+        {
+          "frequency": 12288,
+          "attack": 0,
+          "decay": 64,
+          "sustain": 0,
+          "release": 1,
+          "volume": 12,
+          "waveform": 0
+        },
+        {
+          "frequency": 0,
+          "attack": 0,
+          "decay": 0,
+          "sustain": 0,
+          "release": 0,
+          "volume": 0,
+          "waveform": 0
+        }
+      ]
+    }
+  ]
+}

@@ -136,6 +136,7 @@ public:
     const std::vector<VoiceSlot>& getVoiceSlots() const noexcept { return voiceSlots; }
     int getNumVoices() const noexcept { return numChips * numVoices; }
     int getNumChips() const noexcept { return numChips; }
+    void setNumChips(int n);
     
     // パンポット値取得関数
     std::pair<int, int> getVoicePanValues(int voiceIndex) const;

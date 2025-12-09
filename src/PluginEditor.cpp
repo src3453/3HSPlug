@@ -210,7 +210,7 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
     g.setFont (juce::Font(30.0f));
     g.drawFittedText("3HSPlug", 5, 5, 100, 20, juce::Justification::centredLeft, 1);
     g.setFont (juce::Font(15.0f));
-    g.drawFittedText("Harmonic Synthesizer with 3SGUC2X (3HS88PWN4) Emulation", 110, 5, 400, 20, juce::Justification::bottomLeft, 1);
+    g.drawFittedText("Harmonic MIDI Synthesizer with 3HS88PWN4 Emulation", 110, 5, 400, 20, juce::Justification::bottomLeft, 1);
     g.setColour (juce::Colours::white);
     g.setFont (juce::Font(15.0f));
     juce::String debugText = "Voice Slot Debug Info\n";
@@ -219,8 +219,8 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
     int numChips = audioProcessor.getNumChips();
     int numVoices = audioProcessor.numVoices;
     // グラフィカルなバー表示
-    int barHeight = 15;
-    int barSpacing = 4;
+    int barHeight = 10;
+    int barSpacing = 1;
     int barWidthMax = 192;
     int barStartX = 10;
     int barStartY = 40;

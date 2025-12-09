@@ -1,5 +1,6 @@
 // Patchバンク外部定義例
 #pragma once
+#include <vector>
 #include <array>
 #include <cstdint>
 #include <string>
@@ -37,8 +38,8 @@ struct Patch {
 };
 
 // バンクごとのパッチ定義（GSバンク対応）
-extern std::array<std::array<Patch, PATCH_BANK_SIZE>, MAX_BANKS> PatchBanks;
-extern std::array<std::array<Patch, PATCH_BANK_SIZE>, MAX_BANKS> PatchBanksOriginal;
+extern std::vector<std::vector<Patch>> PatchBanks;
+extern std::vector<std::vector<Patch>> PatchBanksOriginal;
 extern Patch defaultPatch; // デフォルトパッチ
 extern bool volumeScalingMap[13][8]; // volumeScalingMapをexternで宣言
 

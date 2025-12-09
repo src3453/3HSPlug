@@ -22,14 +22,14 @@ public:
     #endif
     std::mt19937 mt;
     long long Total_time = 0;
-    int t1[8] = {0,0,0,0,0,0,0,0};
-    int t2[8] = {0,0,0,0,0,0,0,0};
-    int t3[8] = {0,0,0,0,0,0,0,0};
-    int t4[8] = {0,0,0,0,0,0,0,0};
-    int t5[8] = {0,0,0,0,0,0,0,0};
-    int t6[8] = {0,0,0,0,0,0,0,0};
-    int t7[8] = {0,0,0,0,0,0,0,0};
-    int t8[8] = {0,0,0,0,0,0,0,0};
+    double t1[8] = {0,0,0,0,0,0,0,0};
+    double t2[8] = {0,0,0,0,0,0,0,0};
+    double t3[8] = {0,0,0,0,0,0,0,0};
+    double t4[8] = {0,0,0,0,0,0,0,0};
+    double t5[8] = {0,0,0,0,0,0,0,0};
+    double t6[8] = {0,0,0,0,0,0,0,0};
+    double t7[8] = {0,0,0,0,0,0,0,0};
+    double t8[8] = {0,0,0,0,0,0,0,0};
     unsigned long long twt[4] = {0,0,0,0};
     float in1[4]  = {0.0,0.0,0.0,0.0};
     float in2[4]  = {0.0,0.0,0.0,0.0};
@@ -59,7 +59,7 @@ public:
     
     float S3HS_SAMPLE_FREQ = 48000;
     #define SINTABLE_LENGTH 256
-    #define PHASE_RESOLUTION 16
+    #define PHASE_RESOLUTION 1
     #define DMA_BUFFER_SIZE 4096
 
     unsigned char DMABuffer[4][DMA_BUFFER_SIZE] = {{0}};
@@ -69,6 +69,7 @@ public:
     }
 
     float sind(float theta) {
+        //return (std::fmod(theta+0.25f,1.0f)>=0.5?1.5-std::fmod(theta+0.25f,1.0f)*2:std::fmod(theta+0.25f,1.0f)*2-0.5)*2;
         return sin((float)theta*2*M_PI);
     }
 
@@ -83,19 +84,21 @@ public:
         const int index = ((int)scaledTheta) & 0xff;
 
         const float pre = sintable[wf][index];
+        const float nxt = sintable[wf][(index + 1) & 0xff];
         return pre * volume;
+        //return (pre + (nxt - pre) * (scaledTheta - (int)scaledTheta)) * volume;
 
     }
 
-    float generateHSWave(int mode, float t1, float v1, float t2, float v2, float t3, float v3, float t4, float v4, float t5, float v5, float t6, float v6, float t7, float v7, float t8, float v8, int w1, int w2, int w3, int w4, int w5, int w6, int w7, int w8, float fb, int ch, float* result) {
+    float generateHSWave(int mode, double t1, float v1, double t2, float v2, double t3, float v3, double t4, float v4, double t5, float v5, double t6, float v6, double t7, float v7, double t8, float v8, int w1, int w2, int w3, int w4, int w5, int w6, int w7, int w8, float fb, int ch, float* result) {
         float value = 0;
-        float phase = 0;
-        float phase2 = 0;
-        float phase3 = 0;
-        float phase4 = 0;
-        float phase5 = 0;
-        float phase6 = 0;
-        float phase7 = 0;
+        double phase = 0;
+        double phase2 = 0;
+        double phase3 = 0;
+        double phase4 = 0;
+        double phase5 = 0;
+        double phase6 = 0;
+        double phase7 = 0;
         feedback = (MIN(MAX(((result[ch]/255/127)+1.0),0),2)-1.0)*fb;
         switch (mode)
         {
@@ -220,8 +223,8 @@ public:
         envl.at((size_t)(ch*8+opNum)).update(adsr,dt);
     }
 
-    #define S3HS_MASTER_CLOCK (48000*4)
-
+    //#define S3HS_MASTER_CLOCK (111860.79545) // in Hertz, example: NES APU period clock
+    #define S3HS_MASTER_CLOCK 192000.0f // in Hertz, 192KHz from specification
     // Quantize frequency by period, simulating a pitch inaccuracy like NES, PSG...
     float quantizeFreqByPeriod(float freq) {
         const float masterClock = S3HS_MASTER_CLOCK;   
@@ -279,15 +282,15 @@ public:
             
             for(int ch=0; ch < 8; ch++) {
                 int addr = 64*ch;
-                int f1 = (int)(quantizeFreqByPeriod((float)reg[addr+0]*256+reg[addr+1]))*PHASE_RESOLUTION/OVERSAMPLE_MULT;
+                double f1 = (double)(quantizeFreqByPeriod((double)reg[addr+0]*256+reg[addr+1]))*PHASE_RESOLUTION/OVERSAMPLE_MULT;
                 t1[ch] = t1[ch] + f1;
-                t2[ch] = t2[ch] + (int)(float)f1*(((float)reg[addr+2]*256+reg[addr+3])/4096);
-                t3[ch] = t3[ch] + (int)(float)f1*(((float)reg[addr+4]*256+reg[addr+5])/4096);
-                t4[ch] = t4[ch] + (int)(float)f1*(((float)reg[addr+6]*256+reg[addr+7])/4096);
-                t5[ch] = t5[ch] + (int)(float)f1*(((float)reg[addr+8]*256+reg[addr+9])/4096);
-                t6[ch] = t6[ch] + (int)(float)f1*(((float)reg[addr+10]*256+reg[addr+11])/4096);
-                t7[ch] = t7[ch] + (int)(float)f1*(((float)reg[addr+12]*256+reg[addr+13])/4096);
-                t8[ch] = t8[ch] + (int)(float)f1*(((float)reg[addr+14]*256+reg[addr+15])/4096);
+                t2[ch] = t2[ch] + (double)f1*(((double)reg[addr+2]*256+reg[addr+3])/4096);
+                t3[ch] = t3[ch] + (double)f1*(((double)reg[addr+4]*256+reg[addr+5])/4096);
+                t4[ch] = t4[ch] + (double)f1*(((double)reg[addr+6]*256+reg[addr+7])/4096);
+                t5[ch] = t5[ch] + (double)f1*(((double)reg[addr+8]*256+reg[addr+9])/4096);
+                t6[ch] = t6[ch] + (double)f1*(((double)reg[addr+10]*256+reg[addr+11])/4096);
+                t7[ch] = t7[ch] + (double)f1*(((double)reg[addr+12]*256+reg[addr+13])/4096);
+                t8[ch] = t8[ch] + (double)f1*(((double)reg[addr+14]*256+reg[addr+15])/4096);
                 float v1 = (float)(vols[ch*8+0])/32768;
                 float v2 = (float)(vols[ch*8+1])/32768;
                 float v3 = (float)(vols[ch*8+2])/32768;
@@ -307,14 +310,14 @@ public:
                 int mode = reg[addr+0x1c];
                 float fb = ((float)(reg[addr+0x1f])/256-0.5)*2;
                 result[ch] += generateHSWave(mode,
-                (float)(t1[ch])/PHASE_RESOLUTION,v1,
-                (float)(t2[ch])/PHASE_RESOLUTION,v2,
-                (float)(t3[ch])/PHASE_RESOLUTION,v3,
-                (float)(t4[ch])/PHASE_RESOLUTION,v4,
-                (float)(t5[ch])/PHASE_RESOLUTION,v5,
-                (float)(t6[ch])/PHASE_RESOLUTION,v6,
-                (float)(t7[ch])/PHASE_RESOLUTION,v7,
-                (float)(t8[ch])/PHASE_RESOLUTION,v8,
+                (t1[ch])/PHASE_RESOLUTION,v1,
+                (t2[ch])/PHASE_RESOLUTION,v2,
+                (t3[ch])/PHASE_RESOLUTION,v3,
+                (t4[ch])/PHASE_RESOLUTION,v4,
+                (t5[ch])/PHASE_RESOLUTION,v5,
+                (t6[ch])/PHASE_RESOLUTION,v6,
+                (t7[ch])/PHASE_RESOLUTION,v7,
+                (t8[ch])/PHASE_RESOLUTION,v8,
                 w1,w2,w3,w4,w5,w6,w7,w8,fb,ch,previous);
                 previous[ch] = result[ch];
                 //std::cout << v1 << std::endl;
@@ -330,7 +333,7 @@ public:
                 }
             }
             for(int ch=0; ch<4; ch++) {
-                int ft = quantizeFreqByPeriod(regwt[ch*48+0]*256+regwt[ch*48+1])*PHASE_RESOLUTION/OVERSAMPLE_MULT;
+                float ft = quantizeFreqByPeriod(regwt[ch*48+0]*256+regwt[ch*48+1])*PHASE_RESOLUTION/OVERSAMPLE_MULT;
                 twt[ch] = twt[ch] + ft;
                 float vt = ((float)regwt[ch*48+2])/255;
                 int val = 0;

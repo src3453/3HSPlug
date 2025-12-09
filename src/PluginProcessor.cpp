@@ -17,7 +17,7 @@
 uint8_t* g_pcmRam = nullptr;
 size_t g_pcmRamSize = 0;
 
-#define DEFAULT_CHIP_COUNT 3
+#define DEFAULT_CHIP_COUNT 4
 
 
 // g_pcmRam → S3HS内蔵RAM転送
@@ -318,20 +318,21 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             printf("\n");
         }
 
-        // 3HSPlug Patch Override (SysEx: F0 7D 33 48 00 <patch#(00~7F)> <relative addr(00~3F)> <data MSB(00~0F)> <data LSB(00~0F)> <checksum> F7)
+        // 3HSPlug Patch Override (SysEx: F0 7D 33 48 00 <bank#(00~7F)> <patch#(00~7F)> <relative addr(00~3F)> <data MSB(00~0F)> <data LSB(00~0F)> <checksum> F7)
 
-        if (msg.isSysEx() && msg.getSysExDataSize() == 8 && msg.getSysExData()[0] == 0x7D && 
+        if (msg.isSysEx() && msg.getSysExDataSize() == 9 && msg.getSysExData()[0] == 0x7D && 
             msg.getSysExData()[1] == 0x33 && msg.getSysExData()[2] == 0x48 && msg.getSysExData()[3] == 0x00) {
             const uint8* data = msg.getSysExData();
-            int patchNumber = data[4];
-            int relativeAddr = data[5];
-            int valueMSB = data[6];
-            int valueLSB = data[7];
+            int bankNumber = data[4];
+            int patchNumber = data[5];
+            int relativeAddr = data[6];
+            int valueMSB = data[7];
+            int valueLSB = data[8];
             int value = (valueMSB << 4) | valueLSB;
-            printf("[Patch Override] Patch %02X, Addr %02X, Value %02X\n", patchNumber, relativeAddr, value);
+            printf("[Patch Override] Bank %02X, Patch %02X, Addr %02X, Value %02X\n", bankNumber, patchNumber, relativeAddr, value);
             // パッチオーバーライド処理
-            if (patchNumber >= 0 && patchNumber < 128) {
-                setPatchOverride(0, patchNumber, relativeAddr, value); // デフォルトでバンク0を使用
+            if (patchNumber >= 0 && patchNumber < 128 && bankNumber >= 0 && bankNumber < 128) {
+                setPatchOverride(bankNumber, patchNumber, relativeAddr, value);
             }
         }
 

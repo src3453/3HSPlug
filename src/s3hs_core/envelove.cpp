@@ -90,7 +90,7 @@ public:
 	}
 	double lerp(double start, double end, double t, int interp = 0) {
 		if (interp == 0) {
-			return start + (end - start) * (t >= 1 ? 1 : 1 - std::powf(2, -10 * t));
+			return start + (end - start) * (t >= 1 ? 1 : 1 - std::pow(2, -10 * t));
 		}
 		else {
 			return start + (end - start) * t;

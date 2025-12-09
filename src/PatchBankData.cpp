@@ -36,8 +36,8 @@ PatchBankの初期化と、プログラム番号に該当しない場合のフ�
 パッチ番号はMIDIプログラム番号によって決定される。GM準拠。
 */
 
-std::array<std::array<Patch, PATCH_BANK_SIZE>, MAX_BANKS> PatchBanks;
-std::array<std::array<Patch, PATCH_BANK_SIZE>, MAX_BANKS> PatchBanksOriginal;
+std::vector<std::vector<Patch>> PatchBanks(MAX_BANKS, std::vector<Patch>(PATCH_BANK_SIZE));
+std::vector<std::vector<Patch>> PatchBanksOriginal(MAX_BANKS, std::vector<Patch>(PATCH_BANK_SIZE));
 
 Patch defaultPatch; // デフォルトパッチ
 
@@ -56,8 +56,8 @@ void initializePatchBanks(const std::string& patchesDir) {
     defaultPatch.feedback = 0x80;
     defaultPatch.keyShift = 0;
     // frequency, attack, decay, sustain, release, volume, waveform
-    defaultPatch.operators[0] = { 0,      0, 64,  1,  32, 255, 3 };
-    defaultPatch.operators[1] = { 0x1000, 0,  0,255, 255,  17, 6 };
+    defaultPatch.operators[0] = { 0,      0, 64,  1,  1, 255, 3 };
+    //defaultPatch.operators[1] = { 0x1000, 0,  0,255, 255,  17, 6 };
     //defaultPatch.operators[2] = { 0x0FF3, 0, 0, 255, 255, 16, 0 };
 
     // すべてのバンクを初期化
@@ -105,6 +105,9 @@ Patch& getEffectivePatch(int bankNumber, int programNumber) {
     if (bankNumber >= 0 && bankNumber < MAX_BANKS &&
         programNumber >= 0 && programNumber < PATCH_BANK_SIZE) {
         
+        // Temporary bypass !!!
+        //return PatchBanks[bankNumber][programNumber];
+
         // 指定バンクにパッチが定義されている場合
         if (PatchBanks[bankNumber][programNumber].defined) {
             return PatchBanks[bankNumber][programNumber];
@@ -112,12 +115,13 @@ Patch& getEffectivePatch(int bankNumber, int programNumber) {
         
         // 指定バンクにパッチがない場合、バンク0（GM）にフォールバック
         if (bankNumber != 0 && PatchBanks[0][programNumber].defined) {
-            //printf("[PatchBankData] Fallback to Bank 0 for program %d\n", programNumber);
+            //printf("[Warning::PatchBankData] No patch found for PC %d:%d, returning patch from bank 0\n", bankNumber, programNumber);
             return PatchBanks[0][programNumber];
         }
     }
     
     // どちらにも定義がない場合はデフォルトパッチ
+    //printf("[Warning::PatchBankData] No patch found for PC %d:%d, returning default patch\n", bankNumber, programNumber);
     return defaultPatch;
 }
 
