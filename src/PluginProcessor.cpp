@@ -1115,10 +1115,10 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     // DCオフセット除去フィルタの適用（最終出力）
     if (dcHighPassFilters.size() >= 1) {
-        //dcHighPassFilters[0].processSamples(left, buffer.getNumSamples());
+        dcHighPassFilters[0].processSamples(left, buffer.getNumSamples());
     }
     if (right && dcHighPassFilters.size() >= 2) {
-        //dcHighPassFilters[1].processSamples(right, buffer.getNumSamples());
+        dcHighPassFilters[1].processSamples(right, buffer.getNumSamples());
     }
     // This is here to avoid people getting screaming feedback
     // when they first compile a plugin, but obviously you don't need to keep
