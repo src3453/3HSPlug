@@ -290,7 +290,7 @@ public:
                 int addr = 64*ch;
                 double f1 = (double)(quantizeFreqByPeriod((double)reg[addr+0]*256+reg[addr+1]))*PHASE_RESOLUTION/OVERSAMPLE_MULT;
                 t1[ch] = t1[ch] + f1;
-                t2[ch] = t2[ch] + quantizeFreqByPeriod((double)f1*(((double)reg[addr+2]*256+reg[addr+3])/4096));
+                t2[ch] = t2[ch] + (double)f1*(((double)reg[addr+2]*256+reg[addr+3])/4096);
                 t3[ch] = t3[ch] + (double)f1*(((double)reg[addr+4]*256+reg[addr+5])/4096);
                 t4[ch] = t4[ch] + (double)f1*(((double)reg[addr+6]*256+reg[addr+7])/4096);
                 t5[ch] = t5[ch] + (double)f1*(((double)reg[addr+8]*256+reg[addr+9])/4096);
