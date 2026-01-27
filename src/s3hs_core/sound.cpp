@@ -67,9 +67,12 @@ public:
     void setSampleRate(float sr) {
         S3HS_SAMPLE_FREQ = sr;
     }
-
+    #define sign(x) ((x)>0?1:((x)<0?-1:0))
     float sind(float theta) {
         //return (std::fmod(theta+0.25f,1.0f)>=0.5?1.5-std::fmod(theta+0.25f,1.0f)*2:std::fmod(theta+0.25f,1.0f)*2-0.5)*2;
+        //return std::fmod(theta,1.0f)*2.0f-1.0f;
+        //return std::fmod(theta,1.0f)>=0.5?1.0f:-1.0f;
+        //return std::pow(abs(sin((float)theta*2*M_PI)),2.0f)*sign(sin((float)theta*2*M_PI));
         return sin((float)theta*2*M_PI);
     }
 
@@ -225,15 +228,18 @@ public:
 
     //#define S3HS_MASTER_CLOCK (111860.79545) // in Hertz, example: NES APU period clock
     #define S3HS_MASTER_CLOCK 192000.0f // in Hertz, 192KHz from specification
+    //#define S3HS_MASTER_CLOCK 48000.0f
     // Quantize frequency by period, simulating a pitch inaccuracy like NES, PSG...
     float quantizeFreqByPeriod(float freq) {
         const float masterClock = S3HS_MASTER_CLOCK;   
         int calculatedPeriod = std::floor(masterClock/freq);
         float quantizedFreq = masterClock/(float)calculatedPeriod;
         return quantizedFreq;
+        //return freq; // temporary disable
     }
 
     #define OVERSAMPLE_MULT 1
+
 
     std::vector<std::vector<std::vector<float_t>>> AudioCallBack(int len)
     {
@@ -284,7 +290,7 @@ public:
                 int addr = 64*ch;
                 double f1 = (double)(quantizeFreqByPeriod((double)reg[addr+0]*256+reg[addr+1]))*PHASE_RESOLUTION/OVERSAMPLE_MULT;
                 t1[ch] = t1[ch] + f1;
-                t2[ch] = t2[ch] + (double)f1*(((double)reg[addr+2]*256+reg[addr+3])/4096);
+                t2[ch] = t2[ch] + quantizeFreqByPeriod((double)f1*(((double)reg[addr+2]*256+reg[addr+3])/4096));
                 t3[ch] = t3[ch] + (double)f1*(((double)reg[addr+4]*256+reg[addr+5])/4096);
                 t4[ch] = t4[ch] + (double)f1*(((double)reg[addr+6]*256+reg[addr+7])/4096);
                 t5[ch] = t5[ch] + (double)f1*(((double)reg[addr+8]*256+reg[addr+9])/4096);

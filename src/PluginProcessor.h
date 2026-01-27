@@ -64,6 +64,15 @@ public:
     ~_3HSPlugAudioProcessor() override;
 
     void resetGM();
+    void allNotesOff();
+
+    // PC Override
+    void setPcOverrideEnabled(bool enabled);
+    bool isPcOverrideEnabled() const;
+    void setPcOverrideBank(int bank);
+    int getPcOverrideBank() const;
+    void setPcOverrideProgram(int program);
+    int getPcOverrideProgram() const;
     
     // プロセッサ初期化（共通処理）
     void initializeProcessor();
@@ -210,4 +219,12 @@ private:
     double movingAverageMidiTime = 0.0;
     double movingAverageSynthTime = 0.0;
     static constexpr double SMOOTHING_FACTOR = 0.1; // 移動平均のスムージング係数
+
+    // PC Override
+    bool pcOverrideEnabled = false;
+    int pcOverrideBank = 0;
+    int pcOverrideProgram = 0;
+
+    // スレッドセーフ用ロック
+    mutable juce::CriticalSection processLock;
 };

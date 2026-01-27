@@ -82,5 +82,18 @@ private:
     // オシロスコープデータ更新メソッド
     //void updateOscilloscopeData();
 
+    // GUI Components
+    juce::TextButton panicButton;
+    juce::TextButton gmResetButton;
+    
+    juce::Label numChipsLabel;
+    juce::ComboBox numChipsComboBox;
+    
+    juce::ToggleButton pcOverrideButton;
+    juce::Label pcOverrideBankLabel;
+    juce::TextEditor pcOverrideBankEditor;
+    juce::Label pcOverrideProgramLabel;
+    juce::TextEditor pcOverrideProgramEditor;
+
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (_3HSPlugAudioProcessorEditor)
 };

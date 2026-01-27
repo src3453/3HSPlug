@@ -24,7 +24,8 @@ endif()
 
 add_subdirectory(lib/JUCE)
 
-
+set (BUILD_DATE "$<IF:$<CONFIG:Debug>,$<TIMESTAMP:%Y-%m-%d %H:%M:%S>,$<DATE:%Y-%m-%d %H:%M:%S>>>")
+configure_file(src/config.h.in config.h @ONLY)
 
 juce_add_plugin(3HSPlug
 
@@ -45,6 +46,7 @@ target_sources(3HSPlug
         src/PatchBankData.cpp
         src/DrumKeymapManager.cpp
         src/DrumPcmSampleLoader.cpp
+        src/config.h
     )
 #        src/OscilloscopeComponent.cpp
 

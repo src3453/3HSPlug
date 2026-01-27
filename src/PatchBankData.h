@@ -56,3 +56,4 @@ void resetPatchBanks();
 
 // 代理発音関連（バンク0へのフォールバック）
 Patch& getEffectivePatch(int bankNumber, int programNumber);
+int getPatchAvailability(int bankNumber, int programNumber);

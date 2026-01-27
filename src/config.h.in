@@ -1,0 +1,5 @@
+// src/config.h.in
+// cmake replaces @BUILD_DATE@ with the actual build date string
+#pragma once
+
+#define BUILD_DATE "@BUILD_DATE@"

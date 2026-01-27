@@ -31,6 +31,7 @@ void transferPcmRamToS3HS(std::vector<Byte>& s3hsRam) {
 //==============================================================================
 void _3HSPlugAudioProcessor::resetGM()
 {
+    juce::ScopedLock sl(processLock);
     printf("[GM] GM reset\n");
     // すべてのCCを0にリセット
     for (int ch = 0; ch < 16; ++ch) {
@@ -46,8 +47,13 @@ void _3HSPlugAudioProcessor::resetGM()
         channelPitchBendRange[ch] = 2; // デフォルトのピッチベンドレンジを2半音に設定
         channelRpnMsb[ch] = 0; // RPN MSBをリセット
         channelRpnLsb[ch] = 0; // RPN LSBをリセット
-        currentProgram[ch] = 0; // プログラム番号を0にリセット
-        currentBank[ch] = 0; // バンク番号を0にリセット
+        if (pcOverrideEnabled) {
+            currentProgram[ch] = pcOverrideProgram; // オーバーライドされたプログラム番号を設定
+            currentBank[ch] = pcOverrideBank; // オーバーライドされたバンク番号を設定
+        } else {
+            currentProgram[ch] = 0; // プログラム番号を0にリセット
+            currentBank[ch] = 0; // バンク番号を0にリセット
+        }
         channelSustainPedal[ch] = false; // サスティンペダルをリセット
         heldNotes[ch].clear(); // ホールドノートをクリア
         channelSustainPedal[ch] = false; // サスティンペダルをリセット
@@ -288,6 +294,8 @@ bool _3HSPlugAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
 
 void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
+    juce::ScopedLock sl(processLock);
+
     // パフォーマンス測定開始
     auto processStartTime = std::chrono::high_resolution_clock::now();
     auto midiStartTime = processStartTime;
@@ -320,7 +328,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
         // 3HSPlug Patch Override (SysEx: F0 7D 33 48 00 <bank#(00~7F)> <patch#(00~7F)> <relative addr(00~3F)> <data MSB(00~0F)> <data LSB(00~0F)> <checksum> F7)
 
-        if (msg.isSysEx() && msg.getSysExDataSize() == 9 && msg.getSysExData()[0] == 0x7D && 
+        if (msg.isSysEx() && msg.getSysExDataSize() == 10 && msg.getSysExData()[0] == 0x7D && 
             msg.getSysExData()[1] == 0x33 && msg.getSysExData()[2] == 0x48 && msg.getSysExData()[3] == 0x00) {
             const uint8* data = msg.getSysExData();
             int bankNumber = data[4];
@@ -532,9 +540,11 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             
             // CC#0 (Bank Select MSB) 処理 - バンク変更 (例: 008:080: Sine Wave)
             if (msg.getControllerNumber() == 0) {
-                int bankMSB = msg.getControllerValue();
-                currentBank[ch - 1] = bankMSB;
-                printf("[GS] Bank Select MSB CH%d: %d (Bank: %d)\n", ch, bankMSB, currentBank[ch - 1]);
+                if (!pcOverrideEnabled) {
+                    int bankMSB = msg.getControllerValue();
+                    currentBank[ch - 1] = bankMSB;
+                    printf("[GS] Bank Select MSB CH%d: %d (Bank: %d)\n", ch, bankMSB, currentBank[ch - 1]);
+                }
             }
             
             // CC#32 (Bank Select LSB) 処理 - バンクには使用しない
@@ -585,10 +595,14 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         uint8 velocity = v.velocity;
                         uint8 expr = this->channelCC[ch][11];
                         uint8 volCC = this->channelCC[ch][7];
+                        float volumeExponentialFactor = 2.0f; // 将来的に音量カーブ調整用に使用可能
+                        float exprExponentialFactor = 2.0f;   // 将来的に音量カーブ調整用に使用可能
+                        float volExp = std::pow(static_cast<float>(volCC) / 127.0f, volumeExponentialFactor);
+                        float exprExp = std::pow(static_cast<float>(expr) / 127.0f, exprExponentialFactor);
                         float volF = (static_cast<float>(velocity) / 127.0f)
-                                   * (static_cast<float>(expr) / 127.0f)
-                                   * (static_cast<float>(volCC) / 127.0f)
-                                   * 255.0f;
+                                * exprExp
+                                * volExp
+                                * 255.0f;
                         uint8_t vol = static_cast<uint8_t>(std::min(std::max(volF, 0.0f), 255.0f));
                         v.volume = vol;
                         int baseAddr = 0x400000 + 0x40 * vIdx;
@@ -734,18 +748,20 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         // プログラムチェンジ処理
         if (msg.isProgramChange())
         {
-            int prog = msg.getProgramChangeNumber();
-            if (prog >= 0 && prog < 128) {
-                int ch = msg.getChannel() - 1;
-                if (ch >= 0 && ch < 16) {
-                    currentProgram[ch] = prog;
-                    int bank = currentBank[ch];
-                    printf("[MIDI] Program Change: Bank %d, Program %d, CH %d\n", bank, prog, msg.getChannel());
-                    
-                    // 代理発音の確認
-                    auto& effectivePatch = getEffectivePatch(bank, prog);
-                    if (bank != 0 && !PatchBanks[bank][prog].defined && PatchBanks[0][prog].defined) {
-                        printf("[PatchBank] Using fallback from Bank 0 for Bank %d Program %d\n", bank, prog);
+            if (!pcOverrideEnabled) {
+                int prog = msg.getProgramChangeNumber();
+                if (prog >= 0 && prog < 128) {
+                    int ch = msg.getChannel() - 1;
+                    if (ch >= 0 && ch < 16) {
+                        currentProgram[ch] = prog;
+                        int bank = currentBank[ch];
+                        printf("[MIDI] Program Change: Bank %d, Program %d, CH %d\n", bank, prog, msg.getChannel());
+                        
+                        // 代理発音の確認
+                        auto& effectivePatch = getEffectivePatch(bank, prog);
+                        if (bank != 0 && !PatchBanks[bank][prog].defined && PatchBanks[0][prog].defined) {
+                            printf("[PatchBank] Using fallback from Bank 0 for Bank %d Program %d\n", bank, prog);
+                        }
                     }
                 }
             }
@@ -788,12 +804,27 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     // 既存ボイスがなければ新しいチャンネルを割り当て
                     if (globalPcmChannel == -1) {
                         int totalPcmChannels = numChips * 4; // 各チップ4チャンネル
+                        
+                        // 安全策：インデックスが範囲外ならリセット
+                        if (drumPcmChannelIndex >= totalPcmChannels) {
+                            drumPcmChannelIndex = 0;
+                        }
+
                         globalPcmChannel = drumPcmChannelIndex;
                         drumPcmChannelIndex = (drumPcmChannelIndex + 1) % totalPcmChannels;
                         
                         // チップとローカルチャンネルを計算
                         chip = globalPcmChannel / 4;
                         pcmChannel = globalPcmChannel % 4;
+                        
+                        // さらに安全策
+                        if (chip >= numChips) {
+                            printf("[Error] Chip index out of bounds: %d >= %d. Resetting to 0.\n", chip, numChips);
+                            chip = 0;
+                            pcmChannel = 0;
+                            globalPcmChannel = 0;
+                        }
+
                         printf("[DrumPCM] Assigning new voice: MIDI ch %d, note %d, globalChannel %d\n", ch, note, globalPcmChannel);
                     }
 
@@ -950,9 +981,13 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     uint8 velocity = msg.getVelocity(); // Velocity, 0 - 127
                     uint8 expr = this->channelCC[ch][11]; // CC#11 Expression, 0 - 127
                     uint8 volCC = this->channelCC[ch][7]; // CC#7 Channel Volume, 0 - 127
+                    float volumeExponentialFactor = 2.0f; // 将来的に音量カーブ調整用に使用可能
+                    float exprExponentialFactor = 2.0f;   // 将来的に音量カーブ調整用に使用可能
+                    float volExp = std::pow(static_cast<float>(volCC) / 127.0f, volumeExponentialFactor);
+                    float exprExp = std::pow(static_cast<float>(expr) / 127.0f, exprExponentialFactor);
                     float volF = (static_cast<float>(velocity) / 127.0f)
-                            * (static_cast<float>(expr) / 127.0f)
-                            * (static_cast<float>(volCC) / 127.0f)
+                            * exprExp
+                            * volExp
                             * 255.0f;
                     uint8_t vol = static_cast<uint8_t>(std::min(std::max(volF, 0.0f), 255.0f));
                     //printf("Note On: %d, chip# %d, chipch %d, MIDIch %d, Volume: %d (unclipped %f, vel %d, vol %d, expr %d)\n", note, chip, vIdx, ch, vol, volF, velocity, volCC, expr);
@@ -1070,8 +1105,8 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         }
         float sumL = 0.0f, sumR = 0.0f;
         for (int chip = 0; chip < numChips; ++chip) {
-            sumL += allFrames[chip][0][12][i]/1.5f;
-            sumR += allFrames[chip][1][12][i]/1.5f;
+            sumL += allFrames[chip][0][12][i];
+            sumR += allFrames[chip][1][12][i];
         }
         left[i] = sumL / 32768.0f;
         if (right)
@@ -1080,10 +1115,10 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     // DCオフセット除去フィルタの適用（最終出力）
     if (dcHighPassFilters.size() >= 1) {
-        dcHighPassFilters[0].processSamples(left, buffer.getNumSamples());
+        //dcHighPassFilters[0].processSamples(left, buffer.getNumSamples());
     }
     if (right && dcHighPassFilters.size() >= 2) {
-        dcHighPassFilters[1].processSamples(right, buffer.getNumSamples());
+        //dcHighPassFilters[1].processSamples(right, buffer.getNumSamples());
     }
     // This is here to avoid people getting screaming feedback
     // when they first compile a plugin, but obviously you don't need to keep
@@ -1135,9 +1170,9 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     
     lastProcessTime = processEndTime;
 }
-
 std::vector<std::vector<float>> _3HSPlugAudioProcessor::getChipAudioDataL(int chip) const
 {
+    juce::ScopedLock sl(processLock);
     if (chip < 0 || chip >= displayBufferL.size())
         return {};
     std::vector<std::vector<float>> slicedData;
@@ -1155,9 +1190,9 @@ std::vector<std::vector<float>> _3HSPlugAudioProcessor::getChipAudioDataL(int ch
 
     return slicedData;
 }
-
 std::vector<std::vector<float>> _3HSPlugAudioProcessor::getChipAudioDataR(int chip) const
 {
+    juce::ScopedLock sl(processLock);
     if (chip < 0 || chip >= displayBufferR.size())
         return {};
     std::vector<std::vector<float>> slicedData;
@@ -1297,6 +1332,161 @@ std::pair<int, int> _3HSPlugAudioProcessor::getVoicePanValues(int voiceIndex) co
     }
     
     return {panL, panR};
+}
+
+//==============================================================================
+void _3HSPlugAudioProcessor::allNotesOff()
+{
+    juce::ScopedLock sl(processLock);
+    printf("[Panic] All Notes Off\n");
+    
+    // 全ボイスを停止
+    for (int flat = 0; flat < numChips * numVoices; ++flat) {
+        int chip = flat / numVoices;
+        int vIdx = flat % numVoices;
+        int baseAddr = 0x400000 + 0x40 * vIdx;
+        
+        // Gate OFF
+        s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x1E, 0);
+        s3hsSounds[chip].resetGate(vIdx);
+        
+        // ボイススロット状態をクリア
+        voiceSlots[flat].inUse = false;
+        voiceSlots[flat].noteNumber = -1;
+        voiceSlots[flat].midiChannel = 0;
+        voiceSlots[flat].velocity = 0;
+        voiceSlots[flat].volume = 0;
+        voiceSlots[flat].lastUsedTick = currentTick;
+    }
+    
+    // ドラムPCMチャンネルを停止
+    for (int i = 0; i < static_cast<int>(drumPcmChannelStates.size()); ++i) {
+        int chip = i / 4;
+        int pcmChannel = i % 4;
+        
+        // 音量を0に設定
+        s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x02, 0);
+        
+        // ドラムPCMチャンネル状態をクリア
+        auto& drumState = drumPcmChannelStates[i];
+        drumState.inUse = false;
+        drumState.noteNumber = -1;
+        drumState.midiChannel = 0;
+        drumState.velocity = 0;
+        drumState.lastUsedTick = currentTick;
+    }
+    
+    // ホールドノートをクリア
+    for (auto& heldList : heldNotes) {
+        heldList.clear();
+    }
+    
+    // サスティンペダル状態をリセット
+    for (auto& pedal : channelSustainPedal) {
+        pedal = false;
+    }
+}
+
+// PC Override
+void _3HSPlugAudioProcessor::setPcOverrideEnabled(bool enabled)
+{
+    if (pcOverrideEnabled != enabled) {
+        pcOverrideEnabled = enabled;
+        if (enabled) {
+            // 有効化されたら、全チャンネルのプログラムを強制的に設定
+            for (int ch = 0; ch < 16; ++ch) {
+                currentBank[ch] = pcOverrideBank;
+                currentProgram[ch] = pcOverrideProgram;
+            }
+            printf("[PC Override] Enabled: Bank %d, Program %d\n", pcOverrideBank, pcOverrideProgram);
+        }
+    }
+}
+
+bool _3HSPlugAudioProcessor::isPcOverrideEnabled() const
+{
+    return pcOverrideEnabled;
+}
+
+void _3HSPlugAudioProcessor::setPcOverrideBank(int bank)
+{
+    if (pcOverrideBank != bank) {
+        pcOverrideBank = bank;
+        if (pcOverrideEnabled) {
+            for (int ch = 0; ch < 16; ++ch) {
+                currentBank[ch] = pcOverrideBank;
+            }
+            printf("[PC Override] Bank changed to %d\n", pcOverrideBank);
+        }
+    }
+}
+
+int _3HSPlugAudioProcessor::getPcOverrideBank() const
+{
+    return pcOverrideBank;
+}
+
+void _3HSPlugAudioProcessor::setPcOverrideProgram(int program)
+{
+    if (pcOverrideProgram != program) {
+        pcOverrideProgram = program;
+        if (pcOverrideEnabled) {
+            for (int ch = 0; ch < 16; ++ch) {
+                currentProgram[ch] = pcOverrideProgram;
+            }
+            printf("[PC Override] Program changed to %d\n", pcOverrideProgram);
+        }
+    }
+}
+
+int _3HSPlugAudioProcessor::getPcOverrideProgram() const
+{
+    return pcOverrideProgram;
+}
+
+void _3HSPlugAudioProcessor::setNumChips(int n)
+{
+    juce::ScopedLock sl(processLock);
+
+    if (n < 1) n = 1;
+    if (n > 16) n = 16; // 上限設定
+    
+    if (numChips != n) {
+        numChips = n;
+        drumPcmChannelIndex = 0; // チャンネルインデックスをリセット
+        
+        // リサイズ処理
+        s3hsSounds.resize(numChips);
+        voiceSlots.resize(numChips * numVoices);
+        displayBufferL.resize(numChips * 12);
+        displayBufferR.resize(numChips * 12);
+        
+        for (int i = 0; i < numChips * 12; ++i) {
+            if (displayBufferL[i].size() != DISPLAY_BUFFER_SIZE) {
+                displayBufferL[i].resize(DISPLAY_BUFFER_SIZE);
+                displayBufferR[i].resize(DISPLAY_BUFFER_SIZE);
+            }
+        }
+        
+        voiceMutexes.clear();
+        for (int i = 0; i < numChips; ++i) {
+            voiceMutexes.emplace_back(std::make_unique<std::mutex>());
+        }
+        
+        drumPcmChannelStates.resize(numChips * 4);
+        
+        // 新しいチップの初期化
+        for (int chip = 0; chip < numChips; ++chip) {
+            s3hsSounds[chip].initSound();
+            s3hsSounds[chip].setSampleRate(static_cast<float>(getSampleRate()));
+            transferPcmRamToS3HS(s3hsSounds[chip].ram);
+        }
+        
+        // 状態リセット
+        allNotesOff();
+        
+        printf("[System] NumChips changed to %d\n", numChips);
+    }
 }
 
 // ドラムPCMチャンネルデバッグ情報取得

@@ -9,6 +9,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import json
 import os
+import mido
 
 # 波形の定義
 WAVEFORMS = {
@@ -179,6 +180,66 @@ GM_INSTRUMENT_NAMES = {
     127: "Gunshot"
 }
 
+"""void setPatchOverride(int bankNumber, int patchNumber, int relativeAddr, int value) {
+    if (bankNumber >= 0 && bankNumber < MAX_BANKS &&
+        patchNumber >= 0 && patchNumber < PATCH_BANK_SIZE) {
+        Patch& patch = PatchBanks[bankNumber][patchNumber];
+        // オーバーライド処理
+        if (relativeAddr >= 0 && relativeAddr < 0x41) {
+            if (relativeAddr >= 0x02 && relativeAddr <= 0x0F)
+            {
+                if ((relativeAddr & 1) == 0) {
+                    patch.operators[relativeAddr/2].frequency &= 0x00FF;
+                    patch.operators[relativeAddr/2].frequency |= (value << 8);
+                } else// OP2-8 frequency MSB
+                {
+                    patch.operators[relativeAddr/2].frequency &= 0xFF00;
+                    patch.operators[relativeAddr/2].frequency |= value;
+                }// OP2-8 frequency LSB
+            }
+            if (relativeAddr >= 0x10 && relativeAddr <= 0x17)
+            {
+                // 音量レジスタのオーバーライド
+                patch.operators[relativeAddr - 0x10].volume = value;
+            }
+            if (relativeAddr >= 0x18 && relativeAddr <= 0x1B)
+            {
+                patch.operators[(relativeAddr - 0x18)*2].waveform = (value & 0xF0) >> 4; // 波形は4bitなので下位4ビットのみを設定
+                patch.operators[(relativeAddr - 0x18)*2 + 1].waveform = value & 0x0F; // MSBを設定
+            }
+            if (relativeAddr == 0x1C) {
+                    patch.modmode = value;
+            } 
+            if (relativeAddr == 0x1F) {
+                    patch.feedback = value;
+            }
+            if (relativeAddr >= 0x20 && relativeAddr <= 0x3F ) {
+                int modulo = relativeAddr % 4;
+                switch (modulo)
+                {
+                case 0:
+                    patch.operators[(relativeAddr - 0x20)/4].attack = value;
+                    break;
+                case 1:
+                    patch.operators[(relativeAddr - 0x20)/4].decay = value;
+                    break;
+                case 2:
+                    patch.operators[(relativeAddr - 0x20)/4].sustain = value;
+                    break;
+                case 3:
+                    patch.operators[(relativeAddr - 0x20)/4].release = value;
+                    break;
+                default:
+                    break;
+                }
+            }
+            if (relativeAddr == 0x40) {
+                patch.keyShift = static_cast<int8_t>(value); // キーシフトはint8_tなのでキャスト
+            }
+        }
+    }
+}"""
+
 class PatchEditor:
     def __init__(self, root):
         self.root = root
@@ -189,7 +250,105 @@ class PatchEditor:
         self.current_patch = None
         
         self.setup_ui()
-        
+
+        # 3HSPlug Patch Override (SysEx: F0 7D 33 48 00 <bank#(00~7F)> <patch#(00~7F)> <relative addr(00~3F)> <data MSB(00~0F)> <data LSB(00~0F)> <checksum> F7)
+    def create_patch_override_sysex(self, bank_num, patch_num, relative_addr, data):
+        sysex = [0x7D, 0x33, 0x48, 0x00,
+                bank_num & 0x7F,
+                patch_num & 0x7F,
+                relative_addr & 0x3F,
+                (data & 0xF0) >> 4,
+                data & 0x0F]
+        checksum = (-(sum(sysex) & 0x7F)) & 0x7F
+        sysex.append(checksum)
+        print(f"Created SysEx: {[hex(b) for b in [0xF0]+sysex+[0xF7]]}")
+        return sysex
+
+    def send_sysex_message(self, patchnum):
+        sysexes = []
+        for addr in range(0x00, 0x41):
+                if 0x02 <= addr <= 0x0F:  # OP2-8 frequency MSB/LSB
+                    op_index = addr // 2
+                    try:
+                        operator = self.current_patch["operators"][op_index]
+                    except IndexError:
+                        continue # オペレーターが存在しない場合は終了
+                    if addr % 2 == 0: # MSB
+                        frequency = operator.get("frequency", 0) >> 8
+                    else: # LSB
+                        frequency = operator.get("frequency", 0) & 0xFF
+                    sysexes.append(self.create_patch_override_sysex(0, patchnum, addr, frequency))  # 例: bank 0, patch patchnum, relative addr addr, data 0x00
+                if 0x10 <= addr <= 0x17:  # Volume
+                    op_index = addr - 0x10
+                    try:
+                        operator = self.current_patch["operators"][op_index]
+                    except IndexError:
+                        continue # オペレーターが存在しない場合は終了
+                    volume = operator.get("volume", 0)
+                    sysexes.append(self.create_patch_override_sysex(0, patchnum, addr, volume))
+                if 0x18 <= addr <= 0x1B:  # Waveform
+                    op_index = (addr - 0x18) * 2
+                    try:
+                        operator = self.current_patch["operators"][op_index]
+                        operator2 = self.current_patch["operators"][op_index + 1]
+                    except IndexError:
+                        continue # オペレーターが存在しない場合は終了
+                    if addr % 2 == 0:  # MSB
+                        waveform = (operator.get("waveform", 0) & 0x0F) << 4
+                        waveform += operator2.get("waveform", 0) & 0x0F
+                        sysexes.append(self.create_patch_override_sysex(0, patchnum, addr, waveform))
+                if addr == 0x1C:  # Modulation mode
+                    modmode = self.current_patch.get("modmode", 4)
+                    sysexes.append(self.create_patch_override_sysex(0, patchnum, addr, modmode))
+                if addr == 0x1F:  # Feedback
+                    feedback = self.current_patch.get("feedback", 128)
+                    sysexes.append(self.create_patch_override_sysex(0, patchnum, addr, feedback))
+                if 0x20 <= addr <= 0x3F:  # ADSR
+                    op_index = (addr - 0x20) // 4
+                    modulo = (addr - 0x20) % 4
+                    try:
+                        operator = self.current_patch["operators"][op_index]
+                    except IndexError:
+                        continue # オペレーターが存在しない場合は終了
+                    match modulo:
+                        case 0:  # Attack
+                            attack = operator.get("attack", 0)
+                            sysexes.append(self.create_patch_override_sysex(0, patchnum, addr, attack))
+                        case 1:  # Decay
+                            decay = operator.get("decay", 0)
+                            sysexes.append(self.create_patch_override_sysex(0, patchnum, addr, decay))
+                        case 2:  # Sustain
+                            sustain = operator.get("sustain", 0)
+                            sysexes.append(self.create_patch_override_sysex(0, patchnum, addr, sustain))
+                        case 3:  # Release
+                            release = operator.get("release", 0)
+                            sysexes.append(self.create_patch_override_sysex(0, patchnum, addr, release))
+                if addr == 0x40:  # Key Shift
+                    keyshift = self.current_patch.get("keyShift", 0) & 0xFF
+                    sysexes.append(self.create_patch_override_sysex(0, patchnum, addr, keyshift))
+                else:  # その他のアドレスはスキップ
+                    continue
+        for sysex in sysexes:
+            ports = mido.get_output_names()
+            if not ports:
+                messagebox.showerror("MIDI Error", "No MIDI output ports available")
+                return
+            msg = mido.Message('sysex', data=sysex)  # F0とF7はmidoが自動で追加
+            try:
+                with mido.open_output(ports[0]) as outport:
+                    outport.send(msg)
+            except (AttributeError, OSError) as e:
+                messagebox.showerror("MIDI Error", f"Failed to send SysEx: No MIDI output port available or rtmidi error.\n{str(e)}")
+                return
+
+    def send_current_patch_sysex(self):
+        if not self.current_patch:
+            messagebox.showwarning("No Patch Selected", "Please select a patch to send")
+            return
+        patchnum = self.current_patch.get("program", 0)
+        self.send_sysex_message(patchnum)
+        #messagebox.showinfo("SysEx Sent", f"SysEx messages for patch {patchnum} sent successfully")
+            
     def sort_patches_by_program(self):
         """プログラム番号でパッチを昇順ソート"""
         self.patch_data["patches"].sort(key=lambda p: p.get("program", 0))
@@ -270,6 +429,7 @@ class PatchEditor:
         ttk.Button(button_frame, text="Delete Patch", command=self.delete_patch).pack(pady=2)
         ttk.Button(button_frame, text="Sort by Program#", command=self.sort_patches_by_program).pack(pady=2)
         ttk.Button(button_frame, text="Duplicate Patch...", command=self.duplicate_patch_dialog).pack(pady=2)
+        ttk.Button(button_frame, text="Send SysEx", command=self.send_current_patch_sysex).pack(pady=2)
         
         # 右側パネル: パッチエディター
         right_frame = ttk.Frame(main_frame)

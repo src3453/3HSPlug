@@ -8,6 +8,10 @@
 
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "PatchBankData.h"
+
+// BUILD_DATE が未定義の場合のフォールバック定義（コンパイル日時）
+#define BUILD_DATE __DATE__ " " __TIME__
 
 //==============================================================================
 // HexDumpViewer Implementation
@@ -125,18 +129,69 @@ void HexDumpViewer::mouseWheelMove(const juce::MouseEvent& event, const juce::Mo
 _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor (_3HSPlugAudioProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
+    // Panic Button
+    panicButton.setButtonText("Panic");
+    panicButton.onClick = [this] { audioProcessor.allNotesOff(); };
+    addAndMakeVisible(panicButton);
+    
+    // GM Reset Button
+    gmResetButton.setButtonText("GM Reset");
+    gmResetButton.onClick = [this] { audioProcessor.resetGM(); };
+    addAndMakeVisible(gmResetButton);
+    
+    // Num Chips
+    numChipsLabel.setText("Num Chips:", juce::dontSendNotification);
+    addAndMakeVisible(numChipsLabel);
+    
+    for (int i = 1; i <= 16; ++i) {
+        numChipsComboBox.addItem(juce::String(i), i);
+    }
+    numChipsComboBox.setSelectedId(audioProcessor.getNumChips(), juce::dontSendNotification);
+    numChipsComboBox.onChange = [this] {
+        audioProcessor.setNumChips(numChipsComboBox.getSelectedId());
+    };
+    addAndMakeVisible(numChipsComboBox);
+    
+    // PC Override
+    pcOverrideButton.setButtonText("PC Override");
+    pcOverrideButton.setToggleState(audioProcessor.isPcOverrideEnabled(), juce::dontSendNotification);
+    pcOverrideButton.onClick = [this] {
+        audioProcessor.setPcOverrideEnabled(pcOverrideButton.getToggleState());
+    };
+    addAndMakeVisible(pcOverrideButton);
+    
+    pcOverrideBankLabel.setText("Bank:", juce::dontSendNotification);
+    addAndMakeVisible(pcOverrideBankLabel);
+    
+    pcOverrideBankEditor.setText(juce::String(audioProcessor.getPcOverrideBank()));
+    pcOverrideBankEditor.setInputRestrictions(5, "0123456789");
+    pcOverrideBankEditor.onTextChange = [this] {
+        audioProcessor.setPcOverrideBank(pcOverrideBankEditor.getText().getIntValue());
+    };
+    addAndMakeVisible(pcOverrideBankEditor);
+    
+    pcOverrideProgramLabel.setText("Prog:", juce::dontSendNotification);
+    addAndMakeVisible(pcOverrideProgramLabel);
+    
+    pcOverrideProgramEditor.setText(juce::String(audioProcessor.getPcOverrideProgram()));
+    pcOverrideProgramEditor.setInputRestrictions(3, "0123456789");
+    pcOverrideProgramEditor.onTextChange = [this] {
+        audioProcessor.setPcOverrideProgram(pcOverrideProgramEditor.getText().getIntValue());
+    };
+    addAndMakeVisible(pcOverrideProgramEditor);
+
     // オシロスコープコンポーネントを作成
     //multiOscilloscope = std::make_unique<MultiOscilloscopeComponent>();
     //addAndMakeVisible(*multiOscilloscope);
 
     // 16進ダンプビューアーコンポーネントを作成
-    hexDumpViewer = std::make_unique<HexDumpViewer>();
-    addAndMakeVisible(*hexDumpViewer);
+    //hexDumpViewer = std::make_unique<HexDumpViewer>();
+    //addAndMakeVisible(*hexDumpViewer);
 
     // ウィンドウサイズを横側に拡張（既存の情報表示 + 16進ダンプビューアー）
-    setSize (8, 950);
+    setSize (800, 950);
     setResizable(true, true);
-    setResizeLimits(800, 600, 2560, 1440); // 最小サイズも調整
+    setResizeLimits(300, 300, 2560, 1440); // 最小サイズも調整
     startTimerHz(60); // 60HzでtimerCallback()を呼ぶ
     // 時間経過による減衰計算
     currentDisplayTick = 0;
@@ -208,9 +263,10 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
 
     g.setColour (juce::Colours::white);
     g.setFont (juce::Font(30.0f));
-    g.drawFittedText("3HSPlug", 5, 5, 100, 20, juce::Justification::centredLeft, 1);
+    g.drawFittedText("3HSPlug", 5, 8, 100, 20, juce::Justification::centredLeft, 1);
     g.setFont (juce::Font(15.0f));
-    g.drawFittedText("Harmonic MIDI Synthesizer with 3HS88PWN4 Emulation", 110, 5, 400, 20, juce::Justification::bottomLeft, 1);
+    g.drawFittedText("Harmonic MIDI Synthesizer with 3HS88PWN4 Emulation", 110, 0, 400, 20, juce::Justification::bottomLeft, 1);
+    g.drawFittedText("By: src3453, Build Date: " BUILD_DATE, 110, 15, 400, 20, juce::Justification::bottomLeft, 1);
     g.setColour (juce::Colours::white);
     g.setFont (juce::Font(15.0f));
     juce::String debugText = "Voice Slot Debug Info\n";
@@ -267,7 +323,22 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
         drawPanBars(g, panBarX, panBarY, panBarWidth, panBarHeight, panValues.first, panValues.second);
         
         // テキスト情報（Chip, Note, Ch, Vol, Prg等）をパンポットの右に表示
-        g.setColour(juce::Colours::white);
+        int availability = getPatchAvailability(audioProcessor.getCurrentProgramBankForChannel(v.midiChannel), audioProcessor.getCurrentProgramForChannel(v.midiChannel));
+        switch (availability)
+        {
+        case 2: // 有効
+            g.setColour(juce::Colours::white);
+            break;
+        case 1: // 代理発音
+            g.setColour(juce::Colours::yellow);
+            break;
+        case 0: // 無効
+            g.setColour(juce::Colours::red);
+            break;
+        default:
+            g.setColour(juce::Colours::white);
+            break;
+        }
         juce::String infoText = "Chip " + juce::String(chip) + " " + juce::String(vIdx) + ": ";
         infoText += (v.inUse ? "ON  " : "OFF ");
         infoText += "Note=" + juce::String(v.noteNumber)
@@ -429,13 +500,31 @@ void _3HSPlugAudioProcessorEditor::resized()
 {
     auto bounds = getLocalBounds();
     
-    // 左側600pxを既存のGUI用に確保
-    //auto leftPanel = bounds.removeFromLeft(600);
+    // コントロール配置エリア（左側）
+    int startY = 450; // 情報表示の下あたり
+    int x = 10;
+    
+    panicButton.setBounds(x, startY, 80, 24);
+    gmResetButton.setBounds(x + 90, startY, 80, 24);
+    
+    startY += 30;
+    numChipsLabel.setBounds(x, startY, 80, 24);
+    numChipsComboBox.setBounds(x + 80, startY, 60, 24);
+    
+    startY += 30;
+    pcOverrideButton.setBounds(x, startY, 100, 24);
+    
+    startY += 30;
+    pcOverrideBankLabel.setBounds(x, startY, 40, 24);
+    pcOverrideBankEditor.setBounds(x + 40, startY, 50, 24);
+    pcOverrideProgramLabel.setBounds(x + 100, startY, 40, 24);
+    pcOverrideProgramEditor.setBounds(x + 140, startY, 50, 24);
     
     // 右側に16進ダンプビューアーを配置
-    //if (hexDumpViewer != nullptr) {
-    //    hexDumpViewer->setBounds(bounds.reduced(5));
-    //}
+    if (hexDumpViewer != nullptr) {
+        // 左側300pxを空けて配置
+        hexDumpViewer->setBounds(300, 0, getWidth() - 300, getHeight());
+    }
     
     // オシロスコープは無効化
     //if (multiOscilloscope != nullptr) {

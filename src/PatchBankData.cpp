@@ -125,6 +125,25 @@ Patch& getEffectivePatch(int bankNumber, int programNumber) {
     return defaultPatch;
 }
 
+// パッチの存在状況を取得する関数 (GUI用)
+int getPatchAvailability(int bankNumber, int programNumber) {
+    if (bankNumber >= 0 && bankNumber < MAX_BANKS &&
+        programNumber >= 0 && programNumber < PATCH_BANK_SIZE) {
+        
+        // 指定バンクにパッチが定義されている場合
+        if (PatchBanks[bankNumber][programNumber].defined) {
+            return 2; // 指定バンクに存在
+        }
+        
+        // 指定バンクにパッチがない場合、バンク0（GM）にフォールバック
+        if (bankNumber != 0 && PatchBanks[0][programNumber].defined) {
+            return 1; // バンク0に存在
+        }
+    }
+    
+    return 0; // 存在しない
+}
+
 void setPatchOverride(int bankNumber, int patchNumber, int relativeAddr, int value) {
     if (bankNumber >= 0 && bankNumber < MAX_BANKS &&
         patchNumber >= 0 && patchNumber < PATCH_BANK_SIZE) {
