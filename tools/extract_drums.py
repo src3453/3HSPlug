@@ -5,7 +5,7 @@ import os
 import sys
 
 SAMPLE_RATE = 44100
-OUT_DIR = r"C:\JUCEProj\3HSPlug\build\3HSPlug_artefacts\Release\Standalone\pcm"
+OUT_DIR = sys.argv[4] if len(sys.argv) > 4 else "pcm"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 sf2_path = sys.argv[1]
