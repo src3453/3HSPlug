@@ -30,11 +30,11 @@ configure_file(src/config.h.in config.h @ONLY)
 juce_add_plugin(3HSPlug
 
     COMPANY_NAME "src3453 @ KiTsuNeKo Works"
-    COMPANY_COPYRIGHT "(C) 2025 src3453 licensed under AGPLv3"
+    COMPANY_COPYRIGHT "(C) 2025 src3453 at KiTsuNeKo Works licensed under GPLv3"
     PLUGIN_MANUFACTURER_CODE KTNK
     PLUGIN_CODE 3HSP
     VST3_CATEGORIES Instrument
-    FORMATS Standalone
+    FORMATS Standalone VST3
     PRODUCT_NAME "3HSPlug")
 
 juce_generate_juce_header(3HSPlug)
@@ -46,7 +46,7 @@ target_sources(3HSPlug
         src/PatchBankData.cpp
         src/DrumKeymapManager.cpp
         src/DrumPcmSampleLoader.cpp
-        src/config.h
+        src/CommandLineArgs.cpp
     )
 #        src/OscilloscopeComponent.cpp
 
