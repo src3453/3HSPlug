@@ -33,6 +33,7 @@ juce_add_plugin(3HSPlug
     COMPANY_COPYRIGHT "(C) 2025 src3453 at KiTsuNeKo Works licensed under GPLv3"
     PLUGIN_MANUFACTURER_CODE KTNK
     PLUGIN_CODE 3HSP
+    BUNDLE_ID com.src3453.3hsplug
     VST3_CATEGORIES Instrument
     FORMATS Standalone VST3
     PRODUCT_NAME "3HSPlug")
