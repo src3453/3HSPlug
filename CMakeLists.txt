@@ -46,7 +46,6 @@ target_sources(3HSPlug
         src/PatchBankData.cpp
         src/DrumKeymapManager.cpp
         src/DrumPcmSampleLoader.cpp
-        src/config.h
     )
 #        src/OscilloscopeComponent.cpp
 

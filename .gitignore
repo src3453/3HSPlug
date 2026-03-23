@@ -1,6 +1,9 @@
 # Build directories
 /build
 /.vs
-/lib
+lib
 /.vscode
 /rejected
+**/.venv
+.DS_Store
+__MACOSX
