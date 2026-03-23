@@ -82,7 +82,7 @@ void exportCurrentPatchBankToJSON() {
     if (savePatchBankToJSON(outputPath, 0)) {
         std::cout << "[PatchLoaderJSON] Current PatchBank exported to " << outputPath << std::endl;
     } else {
-        std::cerr << "[PatchLoaderJSON] Failed to export current PatchBank to " << outputPath << std::endl;
+        std::cout << "[PatchLoaderJSON] Failed to export current PatchBank to " << outputPath << std::endl;
     }
 }
 
@@ -250,20 +250,20 @@ bool loadPatchBankFromJSON(const std::string& filePath, int bankNumber) {
         
         juce::File file(filePath);
         if (!file.exists()) {
-            std::cerr << "[PatchLoaderJSON] Error: JSON file does not exist: " << filePath << std::endl;
+            std::cout << "[PatchLoaderJSON] Error: JSON file does not exist: " << filePath << std::endl;
             return false;
         }
         juce::String jsonContent = file.loadFileAsString();
         juce::var jsonData = juce::JSON::parse(jsonContent);
         
         if (!jsonData.isObject()) {
-            std::cerr << "[PatchLoaderJSON] Error: Invalid JSON format" << std::endl;
+            std::cout << "[PatchLoaderJSON] Error: Invalid JSON format" << std::endl;
             return false;
         }
         
         juce::var patches = jsonData.getProperty("patches", juce::var());
         if (!patches.isArray()) {
-            std::cerr << "[PatchLoaderJSON] Error: JSON file does not contain 'patches' array" << std::endl;
+            std::cout << "[PatchLoaderJSON] Error: JSON file does not contain 'patches' array" << std::endl;
             return false;
         }
         
@@ -288,7 +288,7 @@ bool loadPatchBankFromJSON(const std::string& filePath, int bankNumber) {
             
             int programNumber = static_cast<int>(patchData.getProperty("program", 0));
             if (programNumber < 0 || programNumber >= PATCH_BANK_SIZE) {
-                std::cerr << "[PatchLoaderJSON] Warning: Invalid program number " << programNumber << std::endl;
+                std::cout << "[PatchLoaderJSON] Warning: Invalid program number " << programNumber << std::endl;
                 continue;
             }
             
@@ -325,7 +325,7 @@ bool loadPatchBankFromJSON(const std::string& filePath, int bankNumber) {
         return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "[PatchLoaderJSON] Error loading patch bank from JSON: " << e.what() << std::endl;
+        std::cout << "[PatchLoaderJSON] Error loading patch bank from JSON: " << e.what() << std::endl;
         return false;
     }
 }
@@ -384,7 +384,7 @@ bool savePatchBankToJSON(const std::string& filePath, int bankNumber) {
         return true;
         
     } catch (const std::exception& e) {
-        std::cerr << "[PatchLoaderJSON] Error saving patch bank: " << e.what() << std::endl;
+        std::cout << "[PatchLoaderJSON] Error saving patch bank: " << e.what() << std::endl;
         return false;
     }
 }
