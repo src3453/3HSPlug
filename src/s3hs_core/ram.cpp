@@ -1,7 +1,7 @@
 #include <vector>
 #include "header/spec.hpp"
 
-#define Byte unsigned char
+#define Byte uint8_t
 
 std::vector<Byte> ram;
 

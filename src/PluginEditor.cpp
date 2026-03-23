@@ -189,7 +189,7 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor (_3HSPlugAudioProcess
     //addAndMakeVisible(*hexDumpViewer);
 
     // ウィンドウサイズを横側に拡張（既存の情報表示 + 16進ダンプビューアー）
-    setSize (800, 950);
+    setSize (600, 750);
     setResizable(true, true);
     setResizeLimits(300, 300, 2560, 1440); // 最小サイズも調整
     startTimerHz(60); // 60HzでtimerCallback()を呼ぶ
