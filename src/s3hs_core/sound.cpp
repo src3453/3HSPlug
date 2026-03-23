@@ -93,7 +93,7 @@ public:
 
     }
 
-   float generateHSWave(int mode, double t1, float v1, double t2, float v2, double t3, float v3, double t4, float v4, double t5, float v5, double t6, float v6, double t7, float v7, double t8, float v8, int w1, int w2, int w3, int w4, int w5, int w6, int w7, int w8, float fb, int ch, float *result)
+       float generateHSWave(int mode, double t1, float v1, double t2, float v2, double t3, float v3, double t4, float v4, double t5, float v5, double t6, float v6, double t7, float v7, double t8, float v8, int w1, int w2, int w3, int w4, int w5, int w6, int w7, int w8, float fb, int ch, float *result)
     {
         float value = 0;
         double phase = 0;

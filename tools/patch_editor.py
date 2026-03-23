@@ -23,10 +23,10 @@ WAVEFORMS = {
     7: "Abs. Triangle",
     8: "Abs. Sawtooth",
     9: "Noise",
-    10: "PCM1 -> Wave",
-    11: "PCM2 -> Wave",
-    12: "PCM3 -> Wave",
-    13: "PCM4 -> Wave",
+    10: "PCM1 -> Wave [Not implemented]",
+    11: "PCM2 -> Wave [Not implemented]",
+    12: "PCM3 -> Wave [Not implemented]",
+    13: "PCM4 -> Wave [Not implemented]",
     14: "Abs. AC. Sine",
     15: "Alternating Sine"
     }
@@ -240,6 +240,9 @@ GM_INSTRUMENT_NAMES = {
     }
 }"""
 
+def reinterpret_signed_byte(value):
+    return value - 256 if value > 127 else value
+
 class PatchEditor:
     def __init__(self, root):
         self.root = root
@@ -386,6 +389,83 @@ class PatchEditor:
         ttk.Button(dialog, text="OK", command=on_ok).pack(side=tk.LEFT, padx=10, pady=10)
         ttk.Button(dialog, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=10, pady=10)
 
+    
+    def convert_fui_to_patch(self, fui_data):
+        # FUIデータからパッチデータへの変換ロジックを実装
+        # マジックナンバー: 33 48 40 00 (3H@ ) の後の64バイトのデータを想定
+        # それぞれ8bitで表されるパラメーターを適切に変換してPatch構造にマッピングする必要があります。
+        #0: op2fu, op3fu, op4fu, op5fu, op6fu, op7fu, op8fu, op2fl, 
+        #8: op3fl, op4fl, op5fl, op6fl, op7fl, op8fl, op1w, op2w, 
+        #16: op3w, op4w, op5w, op6w, op7w, op8w, op1v, op1a, 
+        #24: op1d, op1s, op1r, op2v, op2a, op2d, op2s, op2r, 
+        #32: op3v, op3a, op3d, op3s, op3r, op4v, op4a, op4d,
+        #40: op4s, op4r, op5v, op5a, op5d, op5s, op5r, op6v,
+        #48: op6a, op6d, op6s, op6r, op7v, op7a, op7d, op7s, 
+        #56: op7r, op8v, op8a, op8d, op8s, op8r, mode, fb
+        if len(fui_data) != 64:
+            raise ValueError("Invalid FUI data length. Expected 64 bytes.")
+        patch = {
+            "program": -1, #FUIファイルにはプログラム番号が含まれていないため
+            "modmode": fui_data[62],
+            "feedback": reinterpret_signed_byte(fui_data[63])+128, #FUIのフィードバックは-128-127で表されているため、-128を加算して0-255に変換
+            "keyShift": 0, #FUIファイルにはキーシフトが含まれていないため
+            "operators": []
+        }
+        for i in range(8):
+            operator = {
+                "waveform": fui_data[16 + i],
+                "volume": fui_data[22 + i*5 + 0],
+                "attack": fui_data[22 + i*5 + 1],
+                "decay": fui_data[22 + i*5 + 2],
+                "sustain": fui_data[22 + i*5 + 3],
+                "release": fui_data[22 + i*5 + 4]
+            }
+            if i != 0:
+                operator["frequency"] = (fui_data[i-1] << 8) + fui_data[i-1+7]
+            patch["operators"].append(operator)
+        return patch
+
+    def import_fui(self):
+        filename = filedialog.askopenfilename(
+            title="Import from FUI file",
+            filetypes=[("FUI files", "*.fui"), ("All files", "*.*")]
+        )
+        if filename:
+            try:
+                with open(filename, 'rb') as f:
+                    fui_data = f.read()
+                #マジックナンバー: 33 48 40 00 (3H@ ) を探す
+                magic_index = fui_data.find(b'\x33\x48\x40\x00')
+                if magic_index == -1:
+                    raise ValueError("Invalid FUI file: Magic number not found")
+                fui_data = fui_data[magic_index + 4:magic_index + 4 + 64] #マジックナンバーの後の64バイトを抽出
+                # FUIデータからパッチを変換して追加
+                new_patch = self.convert_fui_to_patch(fui_data)
+                # show dialog to ask for program number
+                dialog = tk.Toplevel(self.root)
+                dialog.title("Enter Program Number for Imported Patch")
+                tk.Label(dialog, text="Program Number (0-127):").pack(padx=10, pady=5)
+                prog_var = tk.IntVar(value=0)
+                spin = ttk.Spinbox(dialog, from_=0, to=127, textvariable=prog_var, width=10)
+                spin.pack(padx=10, pady=5)
+                def on_ok():
+                    new_prog = prog_var.get()
+                    # 既存番号チェック
+                    if any(p.get("program", -1) == new_prog for p in self.patch_data["patches"]):
+                        if not messagebox.askyesno("Warning", f"Program number {new_prog} already exists. Proceed with overwrite?"):
+                            dialog.destroy()
+                            return
+                    new_patch["program"] = new_prog
+                # proceed overwrite if program number exists
+                    self.patch_data["patches"] = [p for p in self.patch_data["patches"] if p.get("program", -1) != new_prog] + [new_patch]
+                    dialog.destroy()
+                    self.update_patch_list()
+                    messagebox.showinfo("Success", "FUI file imported successfully")
+                ttk.Button(dialog, text="OK", command=on_ok).pack(side=tk.LEFT, padx=10, pady=10)
+                ttk.Button(dialog, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=10, pady=10)
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to import FUI file:\n{str(e)}")
+
     def setup_ui(self):
         # メニューバー
         menubar = tk.Menu(self.root)
@@ -430,6 +510,7 @@ class PatchEditor:
         ttk.Button(button_frame, text="Sort by Program#", command=self.sort_patches_by_program).pack(pady=2)
         ttk.Button(button_frame, text="Duplicate Patch...", command=self.duplicate_patch_dialog).pack(pady=2)
         ttk.Button(button_frame, text="Send SysEx", command=self.send_current_patch_sysex).pack(pady=2)
+        ttk.Button(button_frame, text="Import from .fui file...", command=self.import_fui).pack(pady=2)
         
         # 右側パネル: パッチエディター
         right_frame = ttk.Frame(main_frame)
