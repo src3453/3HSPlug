@@ -4,6 +4,7 @@
 lib
 /.vscode
 /rejected
-**/.venv
+/.stash/**
+*.ignore.***/.venv
 .DS_Store
 __MACOSX
