@@ -38,6 +38,9 @@ void _3HSPlugAudioProcessor::resetGM()
         for (int cc = 0; cc < 128; ++cc) {
             channelCC[ch][cc] = 0;
         }
+        #ifdef USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY
+        currentRollingIndex = 0; // ローリングチャンネル割り当て戦略用インデックスをリセット
+        #endif
         channelCC[ch][10] = 64;  // パン
         channelCC[ch][7]  = 127; // ボリューム
         channelCC[ch][11] = 127; // エクスプレッション
@@ -906,7 +909,28 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
                 float freq = 440.0f * std::pow(2.0f, ((note + totalKeyShift + bendSemis) - 69) / 12.0f);
                 int freqInt = static_cast<int>(freq);
-
+                #ifdef USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY
+                // ローリングチャンネル割り当て戦略: 常に次のスロットを使用する。もし該当スロットが使用中なら、次の空きスロットを探す。
+                int voiceIndex = currentRollingIndex;
+                if (voiceSlots[voiceIndex].inUse) {
+                    //printf("[Warning::Voice] Rolling allocation: slot %d is in use, searching for next free slot\n", voiceIndex);
+                    int foundFree = -1;
+                    for (int i = 0; i < numChips * numVoices; ++i) {
+                        int idx = (currentRollingIndex + i) % (numChips * numVoices);
+                        if (!voiceSlots[idx].inUse) {
+                            foundFree = idx;
+                            break;
+                        }
+                    }
+                    if (foundFree >= 0) {
+                        voiceIndex = foundFree;
+                        //printf("[Voice] Found free slot %d for rolling allocation\n", voiceIndex);
+                    } else {
+                        printf("[Warning::Voice] No free slots found during rolling allocation, reusing slot %d\n", currentRollingIndex);
+                    }
+                }
+                currentRollingIndex = (currentRollingIndex + 1) % (numChips * numVoices);
+                #else
                 // 既存ノート（同じch/note）が再生中なら、そのスロットを再利用
                 int voiceIndex = -1;
                 for (int i = 0; i < numChips * numVoices; ++i) {
@@ -944,6 +968,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     }
                     printf("[Warning::Voice] No free voice slots, reusing oldest slot %d\n", voiceIndex);
                 }
+                #endif
                 // tickカウンタを進める
                 ++currentTick;
             
@@ -1060,7 +1085,9 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         v.inUse = false;
                         v.noteNumber = -1;
                         //printf("Note Off: %d (adjusted: %d), chip# %d, chipch %d, MIDIch %d\n", note, adjustedNote, chip, vIdx, ch);
-                        break;
+                        #ifndef EMULATE_MSGS_RELEASE_BEHAVIOR
+                            break; // MSGSのリリースはすべての該当ノートをオフにするが、ほとんどのシンセサイザー実装では通常一番最後に押されたノートだけオフにするため、ここでループを抜ける。
+                        #endif
                     }
                 }
             }
