@@ -9,6 +9,9 @@
 #include "DrumKeymapManager.h"
 #include "s3hs_core/sound.cpp"
 
+#define USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY // チャンネル割り当て戦略の切り替え（定義するとローリング戦略、未定義で従来の戦略）
+#define EMULATE_MSGS_RELEASE_BEHAVIOR // MSGSのリリース挙動をエミュレートするか（定義するとMSGSのように同一ノートのすべてのスロットをオフにする、未定義で一般的なシンセのように最後に押されたノートだけオフにする）
+
 // ドラムPCMチャンネルデバッグ情報構造体
 struct DrumPcmChannelDebugInfo {
     int noteNumber = -1;
@@ -32,8 +35,6 @@ struct DrumPcmChannelState {
     int pitchBendValue = 0x2000; // 14bit ピッチベンド値 (0x0000-0x3FFF, センター: 0x2000)
     float pitchBendRange = 2.0f; // ピッチベンドレンジ（半音単位）
 };
-
-// デバッグ文字列取得
 
 // Patch構造体はPatchBankData.hで定義されています（重複定義を削除）
 
@@ -176,6 +177,11 @@ private:
 
     // ボイスアロケーション用tickカウンタ
     uint64_t currentTick = 0;
+
+    // チャンネル割り当て用ローリングインデックス
+    #ifdef USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY
+    int currentRollingIndex = 0; // ローリングチャンネル割り当て戦略用インデックス
+    #endif
 
     // パッチバンク機能
     // std::vector<Patch> patchBank = std::vector<Patch>(128); // 外部定義に切り替え

@@ -35,7 +35,7 @@ juce_add_plugin(3HSPlug
     PLUGIN_CODE 3HSP
     BUNDLE_ID com.src3453.3hsplug
     VST3_CATEGORIES Instrument
-    FORMATS Standalone VST3
+    FORMATS Standalone
     PRODUCT_NAME "3HSPlug")
 
 juce_generate_juce_header(3HSPlug)
