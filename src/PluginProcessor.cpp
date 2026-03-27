@@ -19,6 +19,7 @@ size_t g_pcmRamSize = 0;
 
 #define DEFAULT_CHIP_COUNT 4
 
+#define clip(x, minVal, maxVal) (std::min(std::max((x), (minVal)), (maxVal)))
 
 // g_pcmRam → S3HS内蔵RAM転送
 void transferPcmRamToS3HS(std::vector<Byte>& s3hsRam) {
@@ -622,8 +623,8 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         if (msg.getControllerNumber() == 10) {
                             uint8 panCC = msg.getControllerValue();
                             float panNorm = static_cast<float>(panCC) / 127.0f;
-                            uint8 left = static_cast<uint8>(std::round((1.0f - panNorm) * 15.0f + 0.5f));
-                            uint8 right = static_cast<uint8>(std::round(panNorm * 15.0f + 0.5f));
+                            uint8 left = clip(static_cast<uint8>(std::round((1.0f - panNorm) * 15.0f + 0.5f)), 0, 15);
+                            uint8 right = clip(static_cast<uint8>(std::round(panNorm * 15.0f + 0.5f)), 0, 15);
                             uint8 panReg = (left << 4) | (right & 0x0F);
                             s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x1D, panReg);
                         }
@@ -982,8 +983,8 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         int baseAddr = 0x400000 + 0x40 * vIdx;
                         uint8 panCC = this->channelCC[ch][10];
                         float panNorm = static_cast<float>(panCC) / 127.0f;
-                        uint8 left = static_cast<uint8>(std::round((1.0f - panNorm) * 15.0f + 0.5f));
-                        uint8 right = static_cast<uint8>(std::round(panNorm * 15.0f + 0.5f));
+                        uint8 left = clip(static_cast<uint8>(std::round((1.0f - panNorm) * 15.0f + 0.5f)), 0, 15);
+                        uint8 right = clip(static_cast<uint8>(std::round(panNorm * 15.0f + 0.5f)), 0, 15);
                         uint8 panReg = (left << 4) | (right & 0x0F);
                         int bank = (baseAddr - 0x400000) / 0x40;
                         s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x1D, panReg);
@@ -1032,8 +1033,8 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     // パン設定（CC#10, 0-127, デフォルト64中心）
                     uint8 panCC = this->channelCC[ch][10];
                     float panNorm = static_cast<float>(panCC) / 127.0f; // 0.0=Left, 1.0=Right
-                    uint8 left = static_cast<uint8>(std::round((1.0f - panNorm) * 15.0f + 0.5f));
-                    uint8 right = static_cast<uint8>(std::round(panNorm * 15.0f + 0.5f));
+                    uint8 left = clip(static_cast<uint8>(std::round((1.0f - panNorm) * 15.0f + 0.5f)), 0, 15);
+                    uint8 right = clip(static_cast<uint8>(std::round(panNorm * 15.0f + 0.5f)), 0, 15);
                     uint8 panReg = (left << 4) | (right & 0x0F);
                     bank = (baseAddr - 0x400000) / 0x40;
                     s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x1D, panReg); // パンレジスタ書き込み
