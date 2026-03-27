@@ -1511,6 +1511,9 @@ void _3HSPlugAudioProcessor::setNumChips(int n)
         
         // 状態リセット
         allNotesOff();
+        #ifdef USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY // 未割当インデックスによる例外回避
+        currentRollingIndex = 0; // ローリングチャンネル割り当て戦略用インデックスをリセット
+        #endif
         
         printf("[System] NumChips changed to %d\n", numChips);
     }
