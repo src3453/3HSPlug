@@ -271,7 +271,7 @@
           "frequency": 4112
         },
         {
-          "waveform": 200,
+          "waveform": 0,
           "volume": 75,
           "attack": 0,
           "decay": 162,
