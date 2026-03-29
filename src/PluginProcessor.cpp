@@ -913,38 +913,25 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 #ifdef USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY
                 // ローリングチャンネル割り当て戦略: 常に次のスロットを使用する。もし該当スロットが使用中なら、次の空きスロットを探す。
                 int voiceIndex = currentRollingIndex;
-                // Held Listにnoteがある場合はそれを上書きする。なければ、もしスロットが使用中なら次の空きスロットを探す。
-                int heldIndex = std::find(heldNotes[ch - 1].begin(), heldNotes[ch - 1].end(), note) - heldNotes[ch - 1].begin();
-                if (heldIndex >= 0 && heldIndex < static_cast<int>(heldNotes[ch - 1].size())) {
-                    // Held Listにある場合は、現在のvoiceIndexを使用する（上書き）
+
+                if (voiceSlots[voiceIndex].inUse) {
+                    //printf("[Warning::Voice] Rolling allocation: slot %d is in use, searching for next free slot\n", voiceIndex);
+                    int foundFree = -1;
                     for (int i = 0; i < numChips * numVoices; ++i) {
                         int idx = (currentRollingIndex + i) % (numChips * numVoices);
-                        if (voiceSlots[idx].inUse && voiceSlots[idx].noteNumber == note + totalKeyShift && voiceSlots[idx].midiChannel == ch) {
-                            voiceIndex = idx;
-                            printf("[Voice] Rolling allocation: note %d on channel %d is held, reusing slot %d\n", note, ch, voiceIndex);
+                        if (!voiceSlots[idx].inUse) {
+                            foundFree = idx;
                             break;
                         }
                     }
-                } else {
-                    if (voiceSlots[voiceIndex].inUse) {
-                        //printf("[Warning::Voice] Rolling allocation: slot %d is in use, searching for next free slot\n", voiceIndex);
-                        int foundFree = -1;
-                        for (int i = 0; i < numChips * numVoices; ++i) {
-                            int idx = (currentRollingIndex + i) % (numChips * numVoices);
-                            if (!voiceSlots[idx].inUse) {
-                                foundFree = idx;
-                                break;
-                            }
-                        }
-                        if (foundFree >= 0) {
-                            voiceIndex = foundFree;
-                            //printf("[Voice] Found free slot %d for rolling allocation\n", voiceIndex);
-                        } else {
-                            printf("[Warning::Voice] No free slots found during rolling allocation, reusing slot %d\n", currentRollingIndex);
-                        }
+                    if (foundFree >= 0) {
+                        voiceIndex = foundFree;
+                        //printf("[Voice] Found free slot %d for rolling allocation\n", voiceIndex);
+                    } else {
+                        printf("[Warning::Voice] No free slots found during rolling allocation, reusing slot %d\n", currentRollingIndex);
                     }
-                    currentRollingIndex = (currentRollingIndex + 1) % (numChips * numVoices);
                 }
+                currentRollingIndex = (currentRollingIndex + 1) % (numChips * numVoices);
                 #else
                 // 既存ノート（同じch/note）が再生中なら、そのスロットを再利用
                 int voiceIndex = -1;
