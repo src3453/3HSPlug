@@ -752,6 +752,38 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         // プログラムチェンジ処理
         if (msg.isProgramChange())
         {
+            #ifdef PROGRAM_CHANGE_ALSO_ALL_SOUNDS_OFF
+                // プログラムチェンジ受信時、同チャンネルの全ONボイスを音量0ダミーノートで上書きしてからプログラム変更を適用
+                int targetChannel = msg.getChannel();
+                for (int flat = 0; flat < numChips * numVoices; ++flat) {
+                    auto& v = voiceSlots[flat];
+                    if (v.midiChannel == targetChannel) {
+                        int chip = flat / numVoices;
+                        int vIdx = flat % numVoices;
+                        int baseAddr = 0x400000 + 0x40 * vIdx;
+                        
+                        // 音量を0に設定（即座に無音化）
+                        s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x10, 0);
+                        
+                        // ダミー周波数設定（0Hz）
+                        int dummyFreq = 0;
+                        s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x00, (dummyFreq >> 8) & 0xFF);
+                        s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x01, dummyFreq & 0xFF);
+                        
+                        // Gate OFF（音量0なのでリリースにはならず、即座に音が止まる）
+                        s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x1E, 0);
+                        s3hsSounds[chip].resetGate(vIdx);
+                        
+                        // ボイススロット状態をダミーノートに更新
+                        v.inUse = false; // 使用中フラグをfalseに設定
+                        v.noteNumber = -1; // ダミーノート識別用
+                        v.midiChannel = 0;
+                        v.velocity = 0;
+                        v.volume = 0;
+                        v.lastUsedTick = currentTick;
+                    }
+                }
+            #endif
             if (!pcOverrideEnabled) {
                 int prog = msg.getProgramChangeNumber();
                 if (prog >= 0 && prog < 128) {
