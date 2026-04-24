@@ -11,7 +11,7 @@
 
 #define USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY // チャンネル割り当て戦略の切り替え（定義するとローリング戦略、未定義で従来の戦略）
 #define EMULATE_MSGS_RELEASE_BEHAVIOR // MSGSのリリース挙動をエミュレートするか（定義するとMSGSのように同一ノートのすべてのスロットをオフにする、未定義で一般的なシンセのように最後に押されたノートだけオフにする）
-
+#define PROGRAM_CHANGE_ALSO_ALL_SOUNDS_OFF // プログラムチェンジで全音オフするか（定義するとプログラムチェンジで全音オフ、未定義で全音オフしない）
 // ドラムPCMチャンネルデバッグ情報構造体
 struct DrumPcmChannelDebugInfo {
     int noteNumber = -1;
