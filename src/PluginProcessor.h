@@ -204,6 +204,10 @@ private:
     std::array<int, 16> channelFineTune{};   // -100～+100セント
     std::array<int, 16> channelCoarseTune{}; // -6400～+6300セント
 
+    // LFO（モジュレーション用）
+    std::array<float, 16> channelLfoPhase{};
+    static constexpr float lfoFrequency = 7.0f; // 7Hz
+
     std::vector<std::vector<float>> displayBufferL; // 各チャンネルの左波形データ
     std::vector<std::vector<float>> displayBufferR; // 各チャンネルの右波形データ
 
