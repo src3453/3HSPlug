@@ -1142,6 +1142,89 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     
     }
     
+    // LFO（CC#1 モジュレーション）の更新とピッチ反映
+    double sampleRate = getSampleRate();
+    if (sampleRate > 0.0) {
+        float timeDelta = static_cast<float>(buffer.getNumSamples() / sampleRate);
+        const float dPhase = timeDelta * lfoFrequency * 2.0f * juce::MathConstants<float>::pi;
+
+        for (int ch = 1; ch <= 16; ++ch) {
+            uint8_t modVal = channelCC[ch][1];
+            if (modVal > 0) {
+                // 位相更新
+                channelLfoPhase[ch - 1] += dPhase; // 1-16 -> 0-15
+                if (channelLfoPhase[ch - 1] > 2.0f * juce::MathConstants<float>::pi) {
+                    channelLfoPhase[ch - 1] -= 2.0f * juce::MathConstants<float>::pi;
+                }
+            } else {
+                channelLfoPhase[ch - 1] = 0.0f; // リセット
+            }
+        }
+
+        // FM音源ボイスの周波数を更新
+        for (int flat = 0; flat < numChips * numVoices; ++flat) {
+            auto& v = voiceSlots[flat];
+            if (v.inUse) {
+                int ch = v.midiChannel;
+                if (ch >= 1 && ch <= 16 && channelCC[ch][1] > 0) {
+                    int note = v.noteNumber;
+                    int keyShift = channelKeyShift[ch - 1];
+                    int bendRange = channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2;
+                    int bend = channelPitchBend[ch - 1];
+                    float bendSemis = bendRange * (static_cast<float>(bend) / 8192.0f);
+
+                    float coarse = static_cast<float>(channelCoarseTune[ch - 1]);
+                    float fine   = static_cast<float>(channelFineTune[ch - 1]);
+                    bendSemis += (coarse + fine) / 100.0f;
+
+                    // LFOを加算: 最大で1半音(100セント)の深さ
+                    float lfoDepth = (channelCC[ch][1] / 127.0f) * 1.0f;
+                    float lfoOffset = std::sin(channelLfoPhase[ch - 1]) * lfoDepth;
+                    bendSemis += lfoOffset;
+
+                    int progIdx = currentProgram[ch - 1];
+                    auto patch = getEffectivePatch(currentBank[ch - 1], progIdx);
+                    int totalKeyShift = keyShift + patch.keyShift;
+
+                    float freq = 440.0f * std::pow(2.0f, ((note + totalKeyShift + bendSemis) - 69) / 12.0f);
+                    int freqInt = static_cast<int>(freq);
+                    
+                    int chip = flat / numVoices;
+                    int vIdx = flat % numVoices;
+                    int baseAddr = 0x400000 + 0x40 * vIdx;
+                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x00, (freqInt >> 8) & 0xFF);
+                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x01, freqInt & 0xFF);
+                }
+            }
+        }
+        
+        // ドラムPCMのピッチ更新
+        for (int i = 0; i < static_cast<int>(drumPcmChannelStates.size()); ++i) {
+            auto& drumState = drumPcmChannelStates[i];
+            if (drumState.inUse) {
+                int ch = drumState.midiChannel;
+                if (ch >= 1 && ch <= 16 && channelCC[ch][1] > 0) {
+                    int bendRange = channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2;
+                    int bend = channelPitchBend[ch - 1];
+                    float bendSemis = bendRange * (static_cast<float>(bend) / 8192.0f);
+
+                    float lfoDepth = (channelCC[ch][1] / 127.0f) * 1.0f;
+                    float lfoOffset = std::sin(channelLfoPhase[ch - 1]) * lfoDepth;
+                    bendSemis += lfoOffset;
+
+                    float pitchRatio = std::pow(2.0f, bendSemis / 12.0f);
+                    float modifiedSampleRate = drumState.sampleRate * pitchRatio;
+                    int pcmFreq = static_cast<int>(std::floor(modifiedSampleRate / 32.0));
+
+                    int chip = i / 4;
+                    int pcmChannel = i % 4;
+                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x00, (pcmFreq >> 8) & 0xFF);
+                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x01, pcmFreq & 0xFF);
+                }
+            }
+        }
+    }
+
     // MIDI処理時間測定終了
     auto midiEndTime = std::chrono::high_resolution_clock::now();
     auto midiDuration = std::chrono::duration_cast<std::chrono::microseconds>(midiEndTime - midiStartTime);
