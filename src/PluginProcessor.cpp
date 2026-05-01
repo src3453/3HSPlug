@@ -926,6 +926,9 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 }
             } else {
             // それ以外はFM音源等の従来処理
+
+                channelLfoPhase[ch - 1] = 0.0f; // リセット
+
                 int keyShift = (ch >= 1 && ch <= 16) ? channelKeyShift[ch - 1] : 0;
                 int bend = (ch >= 1 && ch <= 16) ? channelPitchBend[ch - 1] : 0;
                 int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2; // デフォルト2
@@ -1185,7 +1188,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
                     int progIdx = currentProgram[ch - 1];
                     auto patch = getEffectivePatch(currentBank[ch - 1], progIdx);
-                    int totalKeyShift = keyShift + patch.keyShift;
+                    int totalKeyShift = keyShift;
 
                     float freq = 440.0f * std::pow(2.0f, ((note + totalKeyShift + bendSemis) - 69) / 12.0f);
                     int freqInt = static_cast<int>(freq);
