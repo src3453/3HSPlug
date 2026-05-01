@@ -206,7 +206,12 @@ private:
 
     // LFO（モジュレーション用）
     std::array<float, 16> channelLfoPhase{};
-    static constexpr float lfoFrequency = 7.0f; // 7Hz
+    std::array<float, 16> channelLfoDepth{}; // LFO深さ（0.0～1.0）
+    std::array<float, 16> channelLfoRate{};  // LFOレート（Hz）
+    
+    static constexpr float lfoFrequencyCenter = 7.0f; // 7Hz
+    static constexpr float lfoFrequencyMin = 0.1f; // 0.1Hz
+    static constexpr float lfoFrequencyMax = 20.0f; // 20Hz
 
     std::vector<std::vector<float>> displayBufferL; // 各チャンネルの左波形データ
     std::vector<std::vector<float>> displayBufferR; // 各チャンネルの右波形データ

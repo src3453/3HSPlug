@@ -46,6 +46,9 @@ void _3HSPlugAudioProcessor::resetGM()
         channelCC[ch][7]  = 127; // ボリューム
         channelCC[ch][11] = 127; // エクスプレッション
         channelCC[ch][1]  = 0;   // モジュレーションホイール
+        channelCC[ch][76] = 64;  // ビブラートレート
+        channelCC[ch][77] = 64;  // ビブラートデプス
+        channelCC[ch][78] = 64;  // ビブラートディレイ
         channelPitchBend[ch] = 0x0; // ピッチベンドをセンターにリセット
         channelCoarseTune[ch] = 0x0; // コースチューニングをセンターにリセット
         channelFineTune[ch] = 0x0; // ファインチューニングをセンターにリセット
@@ -1104,15 +1107,25 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     
     }
     
-    // LFO（CC#1 モジュレーション）の更新とピッチ反映
+    // LFO（CC#1 モジュレーション・CC#76/77 ビブラート）の更新とピッチ反映
     double sampleRate = getSampleRate();
     if (sampleRate > 0.0) {
         float timeDelta = static_cast<float>(buffer.getNumSamples() / sampleRate);
-        const float dPhase = timeDelta * lfoFrequency * 2.0f * juce::MathConstants<float>::pi;
 
         for (int ch = 1; ch <= 16; ++ch) {
             uint8_t modVal = channelCC[ch][1];
-            if (modVal > 0) {
+            uint8_t rateVal = channelCC[ch][76];
+            uint8_t depthVal = channelCC[ch][77];
+            
+            float lfoFreq;
+            if (rateVal < 64) {
+               lfoFreq = lfoFrequencyMin * std::pow(lfoFrequencyCenter / lfoFrequencyMin, rateVal / 64.0f);
+            } else {
+               lfoFreq = lfoFrequencyCenter * std::pow(lfoFrequencyMax / lfoFrequencyCenter, (rateVal - 64) / 63.0f);
+            }
+            float dPhase = timeDelta * lfoFreq * 2.0f * juce::MathConstants<float>::pi;
+
+            if (modVal > 0 || depthVal != 64) {
                 // 位相更新
                 channelLfoPhase[ch - 1] += dPhase; // 1-16 -> 0-15
                 if (channelLfoPhase[ch - 1] > 2.0f * juce::MathConstants<float>::pi) {
@@ -1135,9 +1148,10 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 float desiredNote = static_cast<float>(v.noteNumber); // すでにkeyShiftとpatch.keyShiftが加算された状態のノート番号
                 
                 // ピッチベンド
-                int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2;
+                int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2; // デフォルト2
                 int bendVal = (ch >= 1 && ch <= 16) ? channelPitchBend[ch - 1] : 0;
                 float bendSemis = bendRange * (static_cast<float>(bendVal) / 8192.0f);
+                //printf("Updating pitch for CH%d note %d: bendRange=%d, bendVal=%d, bendSemis=%f\n", ch, v.noteNumber, bendRange, bendVal, bendSemis);
 
                 // チューニング
                 float coarse = (ch >= 1 && ch <= 16) ? static_cast<float>(channelCoarseTune[ch - 1]) : 0.0f;
@@ -1145,10 +1159,16 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 bendSemis += (coarse + fine) / 100.0f;
 
                 // LFOモジュレーション
-                if (ch >= 1 && ch <= 16 && channelCC[ch][1] > 0) {
-                    float lfoDepth = (channelCC[ch][1] / 127.0f) * 1.0f;
-                    float lfoOffset = std::sin(channelLfoPhase[ch - 1]) * lfoDepth;
-                    bendSemis += lfoOffset;
+                if (ch >= 1 && ch <= 16) {
+                    uint8_t modVal = channelCC[ch][1];
+                    uint8_t depthVal = channelCC[ch][77];
+                    if (modVal > 0 || depthVal != 64) {
+                        float baseDepth = ((depthVal - 64) / 64.0f) * 1.0f; // -1.0 ~ 1.0
+                        float modDepth = (modVal / 127.0f) * 1.0f;
+                        float lfoDepth = std::max(0.0f, baseDepth + modDepth);
+                        float lfoOffset = std::sin(channelLfoPhase[ch - 1]) * lfoDepth;
+                        bendSemis += lfoOffset;
+                    }
                 }
 
                 float freq = 440.0f * std::pow(2.0f, (desiredNote - 69.0f + bendSemis) / 12.0f);
@@ -1171,10 +1191,16 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 float bendSemis = bendRange * (static_cast<float>(bendVal) / 8192.0f);
 
                 // LFOモジュレーション
-                if (ch >= 1 && ch <= 16 && channelCC[ch][1] > 0) {
-                    float lfoDepth = (channelCC[ch][1] / 127.0f) * 1.0f;
-                    float lfoOffset = std::sin(channelLfoPhase[ch - 1]) * lfoDepth;
-                    bendSemis += lfoOffset;
+                if (ch >= 1 && ch <= 16) {
+                    uint8_t modVal = channelCC[ch][1];
+                    uint8_t depthVal = channelCC[ch][77];
+                    if (modVal > 0 || depthVal != 64) {
+                        float baseDepth = ((depthVal - 64) / 64.0f) * 1.0f; // -1.0 ~ 1.0
+                        float modDepth = (modVal / 127.0f) * 1.0f;
+                        float lfoDepth = std::max(0.0f, baseDepth + modDepth);
+                        float lfoOffset = std::sin(channelLfoPhase[ch - 1]) * lfoDepth;
+                        bendSemis += lfoOffset;
+                    }
                 }
 
                 float pitchRatio = std::pow(2.0f, bendSemis / 12.0f);
