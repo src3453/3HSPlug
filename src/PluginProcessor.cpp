@@ -63,6 +63,8 @@ void _3HSPlugAudioProcessor::resetGM()
         heldNotes[ch].clear(); // ホールドノートをクリア
         channelSustainPedal[ch] = false; // サスティンペダルをリセット
         gsDrumChannels.clear(); // GSドラムチャンネルをクリア
+        channelLfoPhase[ch] = 0.0f; // LFO位相をリセット
+        channelKeyShift[ch] = 0; // キーシフトをリセット
     }
     resetPatchBanks(); // オーバーライドされたパッチをリセット
 }
@@ -127,7 +129,7 @@ _3HSPlugAudioProcessor::_3HSPlugAudioProcessor()
         }
 
 
-        channelPitchBend.fill(0x2000);
+        channelPitchBend.fill(0x0);
         // サウンドチップ数を設定（初期値1、将来拡張可）
         numChips = DEFAULT_CHIP_COUNT; // 例: 2チップ構成
         s3hsSounds.resize(numChips);
@@ -882,7 +884,10 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
                 channelLfoPhase[ch - 1] = 0.0f; // リセット
 
-                int keyShift = (ch >= 1 && ch <= 16) ? channelKeyShift[ch - 1] : 0;
+                // channelKeyShiftは値の更新がないため常に0で計算。
+                // CH1のみ2足されるというバグがあったため、現状は常に0で計算するように修正。将来的に実装する場合は、ここで値を取得して加算する。
+                int keyShift = 0;//(ch >= 1 && ch <= 16) ? channelKeyShift[ch - 1] : 0;
+                //printf("Ch %d keyShift: %d\n", ch, channelKeyShift[ch - 1]);
                 int bend = (ch >= 1 && ch <= 16) ? channelPitchBend[ch - 1] : 0;
                 int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2; // デフォルト2
 
@@ -1057,7 +1062,8 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             int ch = msg.getChannel();
             
             // Note ONと同様にkeyShiftを計算
-            int keyShift = (ch >= 1 && ch <= 16) ? channelKeyShift[ch - 1] : 0;
+            // channelKeyShiftは値の更新がないため常に0で計算。同上
+            int keyShift = 0;//(ch >= 1 && ch <= 16) ? channelKeyShift[ch - 1] : 0;
             int progIdx = currentProgram[ch-1];
             auto patch = getEffectivePatch(currentBank[ch-1], progIdx);
             int totalKeyShift = keyShift + patch.keyShift;
