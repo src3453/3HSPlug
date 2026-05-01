@@ -691,61 +691,19 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             if (ch >= 1 && ch <= 16)
                 channelPitchBend[ch - 1] = bend;
 
-            // ピッチベンド・チューニング即時反映: chの全inUseボイスの周波数レジスタを更新
-            for (int flat = 0; flat < numChips * numVoices; ++flat) {
-                auto& v = voiceSlots[flat];
-                if (v.inUse && v.midiChannel == ch) {
-                    int note = v.noteNumber;
-                    int keyShift = (ch >= 1 && ch <= 16) ? channelKeyShift[ch - 1] : 0;
-                    int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2;
-                    int bend = (ch >= 1 && ch <= 16) ? channelPitchBend[ch - 1] : 0;
-                    float bendSemis = bendRange * (static_cast<float>(bend) / 8192.0f);
-
-                    // チューニング値をセミトーン換算で加算
-                    float coarse = (ch >= 1 && ch <= 16) ? static_cast<float>(channelCoarseTune[ch - 1]) : 0.0f;
-                    float fine   = (ch >= 1 && ch <= 16) ? static_cast<float>(channelFineTune[ch - 1]) : 0.0f;
-                    bendSemis += (coarse + fine) / 100.0f;
-
-                    float freq = 440.0f * std::pow(2.0f, ((note + keyShift + bendSemis) - 69) / 12.0f);
-                    int freqInt = static_cast<int>(freq);
-                    int chip = flat / numVoices;
-                    int vIdx = flat % numVoices;
-                    int baseAddr = 0x400000 + 0x40 * vIdx;
-                    int bank = (baseAddr - 0x400000) / 0x40;
-                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x00, (freqInt >> 8) & 0xFF);
-                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x01, freqInt & 0xFF);
-                }
-            }
+            // 周波数の即時書き込みは廃止。最後に一括更新する。
             
             // --- ドラムPCMピッチベンド処理 ---
-            // ドラムチャンネルの全アクティブPCMチャンネルにピッチベンドを適用
             if (gsDrumChannels.find(ch) != gsDrumChannels.end() || ch == 10) {
                 int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2;
-                int bend = (ch >= 1 && ch <= 16) ? channelPitchBend[ch - 1] : 0;
+                int bendVal = (ch >= 1 && ch <= 16) ? channelPitchBend[ch - 1] : 0;
                 
                 for (int i = 0; i < static_cast<int>(drumPcmChannelStates.size()); ++i) {
                     auto& drumState = drumPcmChannelStates[i];
                     if (drumState.inUse && drumState.midiChannel == ch) {
-                        // ピッチベンド値を構造体に保存
-                        drumState.pitchBendValue = bend + 8192; // 0x0000-0x3FFF形式に変換
+                        // ピッチベンド値を構造体に保存（後段での使用のため）
+                        drumState.pitchBendValue = bendVal + 8192; // 0x0000-0x3FFF形式に変換
                         drumState.pitchBendRange = static_cast<float>(bendRange);
-                        
-                        // 元のサンプルレートにピッチベンドを適用
-                        float bendSemis = bendRange * (static_cast<float>(bend) / 8192.0f);
-                        float pitchRatio = std::pow(2.0f, bendSemis / 12.0f);
-                        
-                        // 新しい周波数を計算
-                        float modifiedSampleRate = drumState.sampleRate * pitchRatio;
-                        int pcmFreq = static_cast<int>(std::floor(modifiedSampleRate));
-                        
-                        // S3HSレジスタに周波数を設定
-                        int chip = i / 4;
-                        int pcmChannel = i % 4;
-                        s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x00, (pcmFreq >> 8) & 0xFF);
-                        s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x01, pcmFreq & 0xFF);
-                        
-                        //printf("[DrumPCM] Pitch bend applied: CH%d PCM%d, bend=%d, ratio=%.3f, freq=%d\n",
-                        //       ch, i, bend, pitchRatio, pcmFreq);
                     }
                 }
             }
@@ -868,15 +826,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     // PCM RAMアドレスをS3HS音源に設定（例: regwtやram_pokeでpcm_addr[pcmChannel]等を設定）
                     // s3hsSounds[0].ram_poke(..., ..., pcmAddr);
 
-                    // PCM周波数レジスタ設定（ピッチベンド適用）
-                    int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2;
-                    int bend = (ch >= 1 && ch <= 16) ? channelPitchBend[ch - 1] : 0;
-                    float bendSemis = bendRange * (static_cast<float>(bend) / 8192.0f);
-                    float pitchRatio = std::pow(2.0f, bendSemis / 12.0f);
-                    float modifiedSampleRate = info.sampleRate * pitchRatio;
-                    int pcmFreq = static_cast<int>(std::floor(modifiedSampleRate / 32.0));
-                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x00, (pcmFreq >> 8) & 0xFF);
-                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x01, pcmFreq & 0xFF);
+                    // PCM周波数は後の一括更新ループで計算・設定されるためここではスキップ
                     
                     // PCM アドレスを書き込む (24bit ビッグエンディアン)
                     // PCM音源部のレジスタは0x30刻み
@@ -907,6 +857,9 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
                     // ドラムPCMチャンネル状態を更新
                     if (globalPcmChannel >= 0 && globalPcmChannel < static_cast<int>(drumPcmChannelStates.size())) {
+                        int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2;
+                        int bend = (ch >= 1 && ch <= 16) ? channelPitchBend[ch - 1] : 0;
+                        
                         auto& drumState = drumPcmChannelStates[globalPcmChannel];
                         drumState.inUse = true;
                         drumState.noteNumber = note;
@@ -1088,8 +1041,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     uint8 panReg = (left << 4) | (right & 0x0F);
                     bank = (baseAddr - 0x400000) / 0x40;
                     s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x1D, panReg); // パンレジスタ書き込み
-                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x00, (freqInt >> 8) & 0xFF); // OP1 周波数 上位ビット
-                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x01, freqInt & 0xFF);   // OP1 周波数 下位ビット
+                    // OP1 周波数書き込みは一括処理ループに任せるためここではスキップ
                     /*s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x02, 0x10); // OP2 周波数倍率 上位ビット
                     s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x03, 0x00);   // OP2 周波数倍率 下位ビット*/
                     // Gate ON
@@ -1170,35 +1122,34 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             auto& v = voiceSlots[flat];
             if (v.inUse) {
                 int ch = v.midiChannel;
+                int chip = flat / numVoices;
+                int vIdx = flat % numVoices;
+                int baseAddr = 0x400000 + 0x40 * vIdx;
+
+                float desiredNote = static_cast<float>(v.noteNumber); // すでにkeyShiftとpatch.keyShiftが加算された状態のノート番号
+                
+                // ピッチベンド
+                int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2;
+                int bendVal = (ch >= 1 && ch <= 16) ? channelPitchBend[ch - 1] : 0;
+                float bendSemis = bendRange * (static_cast<float>(bendVal) / 8192.0f);
+
+                // チューニング
+                float coarse = (ch >= 1 && ch <= 16) ? static_cast<float>(channelCoarseTune[ch - 1]) : 0.0f;
+                float fine   = (ch >= 1 && ch <= 16) ? static_cast<float>(channelFineTune[ch - 1]) : 0.0f;
+                bendSemis += (coarse + fine) / 100.0f;
+
+                // LFOモジュレーション
                 if (ch >= 1 && ch <= 16 && channelCC[ch][1] > 0) {
-                    int note = v.noteNumber;
-                    int keyShift = channelKeyShift[ch - 1];
-                    int bendRange = channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2;
-                    int bend = channelPitchBend[ch - 1];
-                    float bendSemis = bendRange * (static_cast<float>(bend) / 8192.0f);
-
-                    float coarse = static_cast<float>(channelCoarseTune[ch - 1]);
-                    float fine   = static_cast<float>(channelFineTune[ch - 1]);
-                    bendSemis += (coarse + fine) / 100.0f;
-
-                    // LFOを加算: 最大で1半音(100セント)の深さ
                     float lfoDepth = (channelCC[ch][1] / 127.0f) * 1.0f;
                     float lfoOffset = std::sin(channelLfoPhase[ch - 1]) * lfoDepth;
                     bendSemis += lfoOffset;
-
-                    int progIdx = currentProgram[ch - 1];
-                    auto patch = getEffectivePatch(currentBank[ch - 1], progIdx);
-                    int totalKeyShift = keyShift;
-
-                    float freq = 440.0f * std::pow(2.0f, ((note + totalKeyShift + bendSemis) - 69) / 12.0f);
-                    int freqInt = static_cast<int>(freq);
-                    
-                    int chip = flat / numVoices;
-                    int vIdx = flat % numVoices;
-                    int baseAddr = 0x400000 + 0x40 * vIdx;
-                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x00, (freqInt >> 8) & 0xFF);
-                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x01, freqInt & 0xFF);
                 }
+
+                float freq = 440.0f * std::pow(2.0f, (desiredNote - 69.0f + bendSemis) / 12.0f);
+                int freqInt = static_cast<int>(freq);
+
+                s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x00, (freqInt >> 8) & 0xFF);
+                s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x01, freqInt & 0xFF);
             }
         }
         
@@ -1207,24 +1158,27 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             auto& drumState = drumPcmChannelStates[i];
             if (drumState.inUse) {
                 int ch = drumState.midiChannel;
-                if (ch >= 1 && ch <= 16 && channelCC[ch][1] > 0) {
-                    int bendRange = channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2;
-                    int bend = channelPitchBend[ch - 1];
-                    float bendSemis = bendRange * (static_cast<float>(bend) / 8192.0f);
+                
+                // ピッチベンド
+                int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2;
+                int bendVal = (ch >= 1 && ch <= 16) ? channelPitchBend[ch - 1] : 0;
+                float bendSemis = bendRange * (static_cast<float>(bendVal) / 8192.0f);
 
+                // LFOモジュレーション
+                if (ch >= 1 && ch <= 16 && channelCC[ch][1] > 0) {
                     float lfoDepth = (channelCC[ch][1] / 127.0f) * 1.0f;
                     float lfoOffset = std::sin(channelLfoPhase[ch - 1]) * lfoDepth;
                     bendSemis += lfoOffset;
-
-                    float pitchRatio = std::pow(2.0f, bendSemis / 12.0f);
-                    float modifiedSampleRate = drumState.sampleRate * pitchRatio;
-                    int pcmFreq = static_cast<int>(std::floor(modifiedSampleRate / 32.0));
-
-                    int chip = i / 4;
-                    int pcmChannel = i % 4;
-                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x00, (pcmFreq >> 8) & 0xFF);
-                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x01, pcmFreq & 0xFF);
                 }
+
+                float pitchRatio = std::pow(2.0f, bendSemis / 12.0f);
+                float modifiedSampleRate = drumState.sampleRate * pitchRatio;
+                int pcmFreq = static_cast<int>(std::floor(modifiedSampleRate / 32.0));
+
+                int chip = i / 4;
+                int pcmChannel = i % 4;
+                s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x00, (pcmFreq >> 8) & 0xFF);
+                s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x01, pcmFreq & 0xFF);
             }
         }
     }
