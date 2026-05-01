@@ -3668,7 +3668,7 @@
       "program": 100,
       "modmode": 4,
       "feedback": 128,
-      "keyShift": 0,
+      "keyShift": 12,
       "operators": [
         {
           "frequency": 0,
