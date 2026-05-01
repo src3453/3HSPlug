@@ -4788,6 +4788,50 @@
           "waveform": 0
         }
       ]
+    },
+    {
+      "program": 51,
+      "modmode": 4,
+      "feedback": 132,
+      "keyShift": 0,
+      "operators": [
+        {
+          "frequency": 0,
+          "attack": 1,
+          "decay": 0,
+          "sustain": 255,
+          "release": 16,
+          "volume": 255,
+          "waveform": 14
+        },
+        {
+          "frequency": 12288,
+          "attack": 4,
+          "decay": 11,
+          "sustain": 112,
+          "release": 16,
+          "volume": 27,
+          "waveform": 0
+        },
+        {
+          "frequency": 4114,
+          "attack": 1,
+          "decay": 64,
+          "sustain": 64,
+          "release": 4,
+          "volume": 16,
+          "waveform": 15
+        },
+        {
+          "frequency": 0,
+          "attack": 0,
+          "decay": 0,
+          "sustain": 0,
+          "release": 0,
+          "volume": 0,
+          "waveform": 0
+        }
+      ]
     }
   ]
 }

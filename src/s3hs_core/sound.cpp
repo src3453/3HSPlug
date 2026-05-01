@@ -231,8 +231,8 @@ public:
         envl.at((size_t)(ch*8+opNum)).update(adsr,dt);
     }
 
-    #define S3HS_MASTER_CLOCK (111860.79545) // in Hertz, example: NES APU period clock
-    //#define S3HS_MASTER_CLOCK 192000.0f // in Hertz, 192KHz from specification
+    //#define S3HS_MASTER_CLOCK (111860.79545) // in Hertz, example: NES APU period clock
+    #define S3HS_MASTER_CLOCK 192000.0f // in Hertz, 192KHz from specification
     //#define S3HS_MASTER_CLOCK 48000.0f
     // Quantize frequency by period, simulating a pitch inaccuracy like NES, PSG...
     float quantizeFreqByPeriod(float freq) {
