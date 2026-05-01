@@ -35,7 +35,7 @@ void _3HSPlugAudioProcessor::resetGM()
     juce::ScopedLock sl(processLock);
     printf("[GM] GM reset\n");
     // すべてのCCを0にリセット
-    for (int ch = 0; ch < 16; ++ch) {
+    for (int ch = 0; ch <= 16; ++ch) {
         for (int cc = 0; cc < 128; ++cc) {
             channelCC[ch][cc] = 0;
         }
@@ -45,6 +45,7 @@ void _3HSPlugAudioProcessor::resetGM()
         channelCC[ch][10] = 64;  // パン
         channelCC[ch][7]  = 127; // ボリューム
         channelCC[ch][11] = 127; // エクスプレッション
+        channelCC[ch][1]  = 0;   // モジュレーションホイール
         channelPitchBend[ch] = 0x0; // ピッチベンドをセンターにリセット
         channelCoarseTune[ch] = 0x0; // コースチューニングをセンターにリセット
         channelFineTune[ch] = 0x0; // ファインチューニングをセンターにリセット
