@@ -1189,7 +1189,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     uint8_t depthVal = channelCC[ch][77];
                     if (modVal > 0 || depthVal != 64) {
                         float baseDepth = ((depthVal - 64) / 64.0f) * 1.0f; // -1.0 ~ 1.0
-                        float modDepth = (modVal / 127.0f) * 0.5f; // -0.5 ~ 0.5
+                        float modDepth = (modVal / 127.0f) * lfoDepthNormal; // -lfoDepthNormal ~ lfoDepthNormal
                         float lfoDepth = std::max(0.0f, baseDepth + modDepth);
                         float lfoOffset = std::sin(channelLfoPhase[ch - 1]) * lfoDepth;
                         bendSemis += lfoOffset;
@@ -1221,7 +1221,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     uint8_t depthVal = channelCC[ch][77];
                     if (modVal > 0 || depthVal != 64) {
                         float baseDepth = ((depthVal - 64) / 64.0f) * 1.0f; // -1.0 ~ 1.0
-                        float modDepth = (modVal / 127.0f) * 0.5f; // -0.5 ~ 0.5
+                        float modDepth = (modVal / 127.0f) * lfoDepthNormal; // -lfoDepthNormal ~ lfoDepthNormal
                         float lfoDepth = std::max(0.0f, baseDepth + modDepth);
                         float lfoOffset = std::sin(channelLfoPhase[ch - 1]) * lfoDepth;
                         bendSemis += lfoOffset;
