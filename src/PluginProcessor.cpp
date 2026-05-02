@@ -698,15 +698,15 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 8) {
                         // ビブラートレート (Vibrato Rate)
                         channelCC[ch][76] = msg.getControllerValue();
-                        printf("[GM] Vibrato Rate (NRPN) Set: %d (ch %d)\n", channelCC[ch][76], ch);
+                        printf("[GS/XG] Vibrato Rate (NRPN) Set: %d (ch %d)\n", channelCC[ch][76], ch);
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 9) {
                         // ビブラートデプス (Vibrato Depth)
                         channelCC[ch][77] = msg.getControllerValue();
-                        printf("[GM] Vibrato Depth (NRPN) Set: %d (ch %d)\n", channelCC[ch][77], ch);
+                        printf("[GS/XG] Vibrato Depth (NRPN) Set: %d (ch %d)\n", channelCC[ch][77], ch);
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 10) {
                         // ビブラートディレイ (Vibrato Delay)
                         channelCC[ch][78] = msg.getControllerValue();
-                        printf("[GM] Vibrato Delay (NRPN) Set: %d (ch %d)\n", channelCC[ch][78], ch);
+                        printf("[GS/XG] Vibrato Delay (NRPN) Set: %d (ch %d)\n", channelCC[ch][78], ch);
                     }
                 }
             }
