@@ -213,7 +213,7 @@ private:
     std::array<float, 16> channelLfoDepth{}; // LFO深さ（0.0～1.0）
     std::array<float, 16> channelLfoRate{};  // LFOレート（Hz）
     
-    static constexpr float lfoFrequencyCenter = 7.0f; // 7Hz
+    static constexpr float lfoFrequencyCenter = 5.0f; // 5Hz
     static constexpr float lfoFrequencyMin = 0.1f; // 0.1Hz
     static constexpr float lfoFrequencyMax = 20.0f; // 20Hz
 
