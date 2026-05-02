@@ -200,6 +200,10 @@ private:
     std::array<uint8_t, 16> channelRpnMsb{};
     std::array<uint8_t, 16> channelRpnLsb{};
 
+    // NRPN状態管理
+    std::array<uint8_t, 16> channelNrpnMsb{};
+    std::array<uint8_t, 16> channelNrpnLsb{};
+
     // チューニング用
     std::array<int, 16> channelFineTune{};   // -100～+100セント
     std::array<int, 16> channelCoarseTune{}; // -6400～+6300セント

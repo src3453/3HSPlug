@@ -49,26 +49,31 @@ void _3HSPlugAudioProcessor::resetGM()
         channelCC[ch][76] = 64;  // ビブラートレート
         channelCC[ch][77] = 64;  // ビブラートデプス
         channelCC[ch][78] = 64;  // ビブラートディレイ
-        channelPitchBend[ch] = 0x0; // ピッチベンドをセンターにリセット
-        channelCoarseTune[ch] = 0x0; // コースチューニングをセンターにリセット
-        channelFineTune[ch] = 0x0; // ファインチューニングをセンターにリセット
-        channelPitchBendRange[ch] = 2; // デフォルトのピッチベンドレンジを2半音に設定
-        channelRpnMsb[ch] = 0; // RPN MSBをリセット
-        channelRpnLsb[ch] = 0; // RPN LSBをリセット
-        if (pcOverrideEnabled) {
-            currentProgram[ch] = pcOverrideProgram; // オーバーライドされたプログラム番号を設定
-            currentBank[ch] = pcOverrideBank; // オーバーライドされたバンク番号を設定
-        } else {
-            currentProgram[ch] = 0; // プログラム番号を0にリセット
-            currentBank[ch] = 0; // バンク番号を0にリセット
+        
+        if (ch >= 1 && ch <= 16) {
+            int arrayIdx = ch - 1;
+            channelPitchBend[arrayIdx] = 0x0; // ピッチベンドをセンターにリセット
+            channelCoarseTune[arrayIdx] = 0x0; // コースチューニングをセンターにリセット
+            channelFineTune[arrayIdx] = 0x0; // ファインチューニングをセンターにリセット
+            channelPitchBendRange[arrayIdx] = 2; // デフォルトのピッチベンドレンジを2半音に設定
+            channelRpnMsb[arrayIdx] = 0; // RPN MSBをリセット
+            channelRpnLsb[arrayIdx] = 0; // RPN LSBをリセット
+            channelNrpnMsb[arrayIdx] = 127; // NRPN MSBをリセット
+            channelNrpnLsb[arrayIdx] = 127; // NRPN LSBをリセット
+            if (pcOverrideEnabled) {
+                currentProgram[arrayIdx] = pcOverrideProgram; // オーバーライドされたプログラム番号を設定
+                currentBank[arrayIdx] = pcOverrideBank; // オーバーライドされたバンク番号を設定
+            } else {
+                currentProgram[arrayIdx] = 0; // プログラム番号を0にリセット
+                currentBank[arrayIdx] = 0; // バンク番号を0にリセット
+            }
+            channelSustainPedal[arrayIdx] = false; // サスティンペダルをリセット
+            heldNotes[arrayIdx].clear(); // ホールドノートをクリア
+            channelLfoPhase[arrayIdx] = 0.0f; // LFO位相をリセット
+            channelKeyShift[arrayIdx] = 0; // キーシフトをリセット
         }
-        channelSustainPedal[ch] = false; // サスティンペダルをリセット
-        heldNotes[ch].clear(); // ホールドノートをクリア
-        channelSustainPedal[ch] = false; // サスティンペダルをリセット
-        gsDrumChannels.clear(); // GSドラムチャンネルをクリア
-        channelLfoPhase[ch] = 0.0f; // LFO位相をリセット
-        channelKeyShift[ch] = 0; // キーシフトをリセット
     }
+    gsDrumChannels.clear(); // GSドラムチャンネルをクリア
     resetPatchBanks(); // オーバーライドされたパッチをリセット
 }
 
@@ -653,7 +658,15 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     channelRpnLsb[ch-1] = msg.getControllerValue();
                     printf("[MIDI] RPN LSB Set: %d (ch %d)\n", channelRpnLsb[ch-1], ch);
                 }
-                // Data Entry MSB (CC#6) 受信時、RPN値ごとに処理
+                if (msg.getControllerNumber() == 99) {
+                    channelNrpnMsb[ch-1] = msg.getControllerValue();
+                    printf("[MIDI] NRPN MSB Set: %d (ch %d)\n", channelNrpnMsb[ch-1], ch);
+                }
+                if (msg.getControllerNumber() == 98) {
+                    channelNrpnLsb[ch-1] = msg.getControllerValue();
+                    printf("[MIDI] NRPN LSB Set: %d (ch %d)\n", channelNrpnLsb[ch-1], ch);
+                }
+                // Data Entry MSB (CC#6) 受信時、RPN/NRPN値ごとに処理
                 if (msg.getControllerNumber() == 6) {
                     if (channelRpnMsb[ch-1] == 0 && channelRpnLsb[ch-1] == 0) {
                         channelPitchBendRange[ch-1] = msg.getControllerValue();
@@ -682,6 +695,18 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         printf("[GM] Coarse Tune Set: %d cents (ch %d)\n", channelCoarseTune[ch-1], ch);
                         channelRpnMsb[ch-1] = 127;
                         channelRpnLsb[ch-1] = 127;
+                    } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 8) {
+                        // ビブラートレート (Vibrato Rate)
+                        channelCC[ch][76] = msg.getControllerValue();
+                        printf("[GM] Vibrato Rate (NRPN) Set: %d (ch %d)\n", channelCC[ch][76], ch);
+                    } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 9) {
+                        // ビブラートデプス (Vibrato Depth)
+                        channelCC[ch][77] = msg.getControllerValue();
+                        printf("[GM] Vibrato Depth (NRPN) Set: %d (ch %d)\n", channelCC[ch][77], ch);
+                    } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 10) {
+                        // ビブラートディレイ (Vibrato Delay)
+                        channelCC[ch][78] = msg.getControllerValue();
+                        printf("[GM] Vibrato Delay (NRPN) Set: %d (ch %d)\n", channelCC[ch][78], ch);
                     }
                 }
             }
@@ -1164,7 +1189,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     uint8_t depthVal = channelCC[ch][77];
                     if (modVal > 0 || depthVal != 64) {
                         float baseDepth = ((depthVal - 64) / 64.0f) * 1.0f; // -1.0 ~ 1.0
-                        float modDepth = (modVal / 127.0f) * 1.0f;
+                        float modDepth = (modVal / 127.0f) * 0.5f; // -0.5 ~ 0.5
                         float lfoDepth = std::max(0.0f, baseDepth + modDepth);
                         float lfoOffset = std::sin(channelLfoPhase[ch - 1]) * lfoDepth;
                         bendSemis += lfoOffset;
@@ -1196,7 +1221,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     uint8_t depthVal = channelCC[ch][77];
                     if (modVal > 0 || depthVal != 64) {
                         float baseDepth = ((depthVal - 64) / 64.0f) * 1.0f; // -1.0 ~ 1.0
-                        float modDepth = (modVal / 127.0f) * 1.0f;
+                        float modDepth = (modVal / 127.0f) * 0.5f; // -0.5 ~ 0.5
                         float lfoDepth = std::max(0.0f, baseDepth + modDepth);
                         float lfoOffset = std::sin(channelLfoPhase[ch - 1]) * lfoDepth;
                         bendSemis += lfoOffset;
