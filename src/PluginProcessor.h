@@ -216,7 +216,7 @@ private:
     static constexpr float lfoFrequencyCenter = 7.0f; // 7Hz
     static constexpr float lfoFrequencyMin = 0.1f; // 0.1Hz
     static constexpr float lfoFrequencyMax = 20.0f; // 20Hz
-    static constexpr float lfoDepthNormal = 0.75f; // 通常のLFO深さ (半音単位)
+    static constexpr float lfoDepthNormal = 0.5f; // 通常のLFO深さ (半音単位)
 
     std::vector<std::vector<float>> displayBufferL; // 各チャンネルの左波形データ
     std::vector<std::vector<float>> displayBufferR; // 各チャンネルの右波形データ
