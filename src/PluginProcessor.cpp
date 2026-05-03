@@ -910,7 +910,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             } else {
             // それ以外はFM音源等の従来処理
 
-                //channelLfoPhase[ch - 1] = 0.0f; // リセット
+                channelLfoPhase[ch - 1] = 0.0f; // リセット
 
                 // channelKeyShiftは値の更新がないため常に0で計算。
                 // CH1のみ2足されるというバグがあったため、現状は常に0で計算するように修正。将来的に実装する場合は、ここで値を取得して加算する。
