@@ -252,6 +252,10 @@ Patch Patch::applyMutation(const Mutation& mutation) {
         mutatedPatch.operators[i].decay = CLAMP((float)mutatedPatch.operators[i].decay + mutation.decayTime, 0.0f, 255.0f);
         mutatedPatch.operators[i].sustain = CLAMP((float)mutatedPatch.operators[i].sustain + mutation.sustainLevel, 0.0f, 255.0f);
         mutatedPatch.operators[i].release = CLAMP((float)mutatedPatch.operators[i].release + mutation.releaseTime, 0.0f, 255.0f);
+        if (!volumeScalingMap[mutatedPatch.modmode][i]) { // モジュレーターであるOPをLPFパラメータで変化させる
+            // FM音源なので、LPFカットオフはモジュレーションデプスにする（単純な加算で表現）
+            mutatedPatch.operators[i].volume = CLAMP((float)mutatedPatch.operators[i].volume + mutation.LPFCutoff, 0.0f, 255.0f);
+        }
     }
     return mutatedPatch;
 };
