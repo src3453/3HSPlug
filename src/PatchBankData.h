@@ -26,6 +26,8 @@ struct Mutation {
     float decayTime = 0.0f;
     float sustainLevel = 0.0f;
     float releaseTime = 0.0f;
+    float LPFCutoff = 0.0f;
+    float LPFResonance = 0.0f;
 };
 
 // パッチ（MIDIプログラム番号ごとのレジスタ設定）構造体

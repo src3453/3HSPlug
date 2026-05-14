@@ -52,6 +52,8 @@ void _3HSPlugAudioProcessor::resetGM()
         channelCC[ch][72] = 64; // リリースタイム
         channelCC[ch][73] = 64; // アタックタイム
         channelCC[ch][75] = 64; // ディケイタイム
+        channelCC[ch][74] = 64; // LPFカットオフ
+        channelCC[ch][71] = 64; // LPFレゾナンス
         
         if (ch >= 1 && ch <= 16) {
             int arrayIdx = ch - 1;
@@ -631,6 +633,8 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         mut.decayTime = channelCC[ch][75] - 64.0f;
                         mut.sustainLevel = 0.0f;
                         mut.releaseTime = channelCC[ch][72] - 64.0f;
+                        mut.LPFCutoff = channelCC[ch][74] - 64.0f;
+                        mut.LPFResonance = channelCC[ch][71] - 64.0f;
                         auto regs = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut).toRegValues(vol);
                         
                         for (size_t i = 0x10; i < 0x18; ++i) {
@@ -728,7 +732,15 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         // エンベロープリリースタイム (Envelope Release Time)
                         channelCC[ch][72] = msg.getControllerValue();
                         printf("[GS/XG] Envelope Release Time (NRPN) Set: %d (ch %d)\n", channelCC[ch][72], ch);
-                    }
+                    } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 32) {
+                        // LPFカットオフ (LPF Cutoff)
+                        channelCC[ch][74] = msg.getControllerValue();
+                        printf("[GS/XG] LPF Cutoff (NRPN) Set: %d (ch %d)\n", channelCC[ch][74], ch);
+                    } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 33) {
+                        // LPFレゾナンス (LPF Resonance)
+                        channelCC[ch][71] = msg.getControllerValue();
+                        printf("[GS/XG] LPF Resonance (NRPN) Set: %d (ch %d)\n", channelCC[ch][71], ch);
+                    }                
                 }
                         
             }
@@ -947,6 +959,8 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 mut.decayTime = channelCC[ch][75] - 64.0f;
                 mut.sustainLevel = 0.0f;
                 mut.releaseTime = channelCC[ch][72] - 64.0f;
+                mut.LPFCutoff = channelCC[ch][74] - 64.0f;
+                mut.LPFResonance = channelCC[ch][71] - 64.0f;
                 auto patch = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut);
                 int totalKeyShift = keyShift + patch.keyShift;
 
@@ -1125,6 +1139,8 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             mut.decayTime = channelCC[ch][75] - 64.0f;
             mut.sustainLevel = 0.0f;
             mut.releaseTime = channelCC[ch][72] - 64.0f;
+            mut.LPFCutoff = channelCC[ch][74] - 64.0f;
+            mut.LPFResonance = channelCC[ch][71] - 64.0f;
             auto patch = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut);
             int totalKeyShift = keyShift + patch.keyShift;
             int adjustedNote = note + totalKeyShift;
