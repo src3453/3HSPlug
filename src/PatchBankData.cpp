@@ -246,11 +246,12 @@ std::array<uint8_t, 64> Patch::toRegValues(uint8_t midiVolume) {
 
 Patch Patch::applyMutation(const Mutation& mutation) {
     Patch mutatedPatch = *this; // 現在のパッチをコピー
+    //printf("Applying mutation: Attack %+0.2f, Decay %+0.2f, Sustain %+0.2f, Release %+0.2f\n", mutation.attackTime, mutation.decayTime, mutation.sustainLevel, mutation.releaseTime);
     for (size_t i = 0; i < 8; ++i) {
-        mutatedPatch.operators[i].attack = (uint8_t)CLAMP(mutatedPatch.operators[i].attack + mutation.attackTime, 0.0f, 255.0f);
-        mutatedPatch.operators[i].decay = (uint8_t)CLAMP(mutatedPatch.operators[i].decay + mutation.decayTime, 0.0f, 255.0f);
-        mutatedPatch.operators[i].sustain = (uint8_t)CLAMP(mutatedPatch.operators[i].sustain + mutation.sustainLevel, 0.0f, 255.0f);
-        mutatedPatch.operators[i].release = (uint8_t)CLAMP(mutatedPatch.operators[i].release + mutation.releaseTime, 0.0f, 255.0f);
+        mutatedPatch.operators[i].attack = CLAMP((float)mutatedPatch.operators[i].attack + mutation.attackTime, 0.0f, 255.0f);
+        mutatedPatch.operators[i].decay = CLAMP((float)mutatedPatch.operators[i].decay + mutation.decayTime, 0.0f, 255.0f);
+        mutatedPatch.operators[i].sustain = CLAMP((float)mutatedPatch.operators[i].sustain + mutation.sustainLevel, 0.0f, 255.0f);
+        mutatedPatch.operators[i].release = CLAMP((float)mutatedPatch.operators[i].release + mutation.releaseTime, 0.0f, 255.0f);
     }
     return mutatedPatch;
 };

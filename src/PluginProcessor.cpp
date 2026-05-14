@@ -630,7 +630,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         mut.attackTime = channelCC[ch][73] - 64.0f;
                         mut.decayTime = channelCC[ch][75] - 64.0f;
                         mut.sustainLevel = 0.0f;
-                        mut.releaseTime = channelCC[ch][71] - 64.0f;
+                        mut.releaseTime = channelCC[ch][72] - 64.0f;
                         auto regs = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut).toRegValues(vol);
                         
                         for (size_t i = 0x10; i < 0x18; ++i) {
@@ -946,7 +946,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 mut.attackTime = channelCC[ch][73] - 64.0f;
                 mut.decayTime = channelCC[ch][75] - 64.0f;
                 mut.sustainLevel = 0.0f;
-                mut.releaseTime = channelCC[ch][71] - 64.0f;
+                mut.releaseTime = channelCC[ch][72] - 64.0f;
                 auto patch = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut);
                 int totalKeyShift = keyShift + patch.keyShift;
 
@@ -1124,7 +1124,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             mut.attackTime = channelCC[ch][73] - 64.0f;
             mut.decayTime = channelCC[ch][75] - 64.0f;
             mut.sustainLevel = 0.0f;
-            mut.releaseTime = channelCC[ch][71] - 64.0f;
+            mut.releaseTime = channelCC[ch][72] - 64.0f;
             auto patch = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut);
             int totalKeyShift = keyShift + patch.keyShift;
             int adjustedNote = note + totalKeyShift;
