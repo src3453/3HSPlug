@@ -21,6 +21,13 @@ struct Operator {
     uint8_t waveform = 0; // 4bit 
 };
 
+struct Mutation {
+    float attackTime = 0.0f;
+    float decayTime = 0.0f;
+    float sustainLevel = 0.0f;
+    float releaseTime = 0.0f;
+};
+
 // パッチ（MIDIプログラム番号ごとのレジスタ設定）構造体
 struct Patch {
     // 意味のあるパラメータ
@@ -35,6 +42,7 @@ struct Patch {
 
     // レジスタ値配列へ変換
     std::array<uint8_t, 64> toRegValues(uint8_t midiVolume = 255);
+    Patch applyMutation(const Mutation& mutation);
 };
 
 // バンクごとのパッチ定義（GSバンク対応）

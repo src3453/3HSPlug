@@ -242,6 +242,18 @@ std::array<uint8_t, 64> Patch::toRegValues(uint8_t midiVolume) {
     return regs;
 }
 
+#define CLAMP(val, minVal, maxVal) std::min(std::max((val), (minVal)), (maxVal))
+
+Patch Patch::applyMutation(const Mutation& mutation) {
+    Patch mutatedPatch = *this; // 現在のパッチをコピー
+    for (size_t i = 0; i < 8; ++i) {
+        mutatedPatch.operators[i].attack = (uint8_t)CLAMP(mutatedPatch.operators[i].attack + mutation.attackTime, 0.0f, 255.0f);
+        mutatedPatch.operators[i].decay = (uint8_t)CLAMP(mutatedPatch.operators[i].decay + mutation.decayTime, 0.0f, 255.0f);
+        mutatedPatch.operators[i].sustain = (uint8_t)CLAMP(mutatedPatch.operators[i].sustain + mutation.sustainLevel, 0.0f, 255.0f);
+        mutatedPatch.operators[i].release = (uint8_t)CLAMP(mutatedPatch.operators[i].release + mutation.releaseTime, 0.0f, 255.0f);
+    }
+    return mutatedPatch;
+};
 
 // JSONからPatchBankを読み込む
 bool loadPatchBankFromJSON(const std::string& filePath, int bankNumber) {

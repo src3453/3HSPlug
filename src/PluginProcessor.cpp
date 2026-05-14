@@ -49,6 +49,9 @@ void _3HSPlugAudioProcessor::resetGM()
         channelCC[ch][76] = 64;  // ビブラートレート
         channelCC[ch][77] = 64;  // ビブラートデプス
         channelCC[ch][78] = 64;  // ビブラートディレイ
+        channelCC[ch][72] = 64; // リリースタイム
+        channelCC[ch][73] = 64; // アタックタイム
+        channelCC[ch][75] = 64; // ディケイタイム
         
         if (ch >= 1 && ch <= 16) {
             int arrayIdx = ch - 1;
@@ -668,6 +671,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 }
                 // Data Entry MSB (CC#6) 受信時、RPN/NRPN値ごとに処理
                 if (msg.getControllerNumber() == 6) {
+                    printf("[MIDI] NRPN: Parameter %d: %d (ch %d)\n", channelNrpnMsb[ch-1] * 128 + channelNrpnLsb[ch-1], msg.getControllerValue(), ch);
                     if (channelRpnMsb[ch-1] == 0 && channelRpnLsb[ch-1] == 0) {
                         channelPitchBendRange[ch-1] = msg.getControllerValue();
                         if (gsDrumChannels.find(ch) != gsDrumChannels.end() || ch == 10) {
@@ -707,8 +711,21 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         // ビブラートディレイ (Vibrato Delay)
                         channelCC[ch][78] = msg.getControllerValue();
                         printf("[GS/XG] Vibrato Delay (NRPN) Set: %d (ch %d)\n", channelCC[ch][78], ch);
+                    } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 99) {
+                        // エンベロープアタックタイム (Envelope Attack Time)
+                        channelCC[ch][73] = msg.getControllerValue();
+                        printf("[GS/XG] Envelope Attack Time (NRPN) Set: %d (ch %d)\n", channelCC[ch][73], ch);
+                    } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 100) {
+                        // エンベロープディケイタイム (Envelope Decay Time)
+                        channelCC[ch][75] = msg.getControllerValue();
+                        printf("[GS/XG] Envelope Decay Time (NRPN) Set: %d (ch %d)\n", channelCC[ch][75], ch);
+                    } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 102) {
+                        // エンベロープリリースタイム (Envelope Release Time)
+                        channelCC[ch][72] = msg.getControllerValue();
+                        printf("[GS/XG] Envelope Release Time (NRPN) Set: %d (ch %d)\n", channelCC[ch][72], ch);
                     }
                 }
+                        
             }
 
             //printf("[MIDI] CC# %d: %d (ch %d)\n", msg.getControllerNumber(), msg.getControllerValue(), ch);
@@ -920,7 +937,12 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2; // デフォルト2
 
                 int progIdx = currentProgram[ch-1];
-                auto patch = getEffectivePatch(currentBank[ch-1], progIdx);
+                Mutation mut;
+                mut.attackTime = channelCC[ch][73] - 64.0f;
+                mut.decayTime = channelCC[ch][75] - 64.0f;
+                mut.sustainLevel = 0.0f;
+                mut.releaseTime = channelCC[ch][71] - 64.0f;
+                auto patch = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut);
                 int totalKeyShift = keyShift + patch.keyShift;
 
                 float bendSemis = bendRange * (static_cast<float>(bend) / 8192.0f);
@@ -1124,6 +1146,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         //printf("Note Off: %d (adjusted: %d), chip# %d, chipch %d, MIDIch %d\n", note, adjustedNote, chip, vIdx, ch);
                         #ifndef EMULATE_MSGS_RELEASE_BEHAVIOR
                             break; // MSGSのリリースはすべての該当ノートをオフにするが、ほとんどのシンセサイザー実装では通常一番最後に押されたノートだけオフにするため、ここでループを抜ける。
+                            // TODO: 現在の実装では最後のボイスではなく一番最初に見つかったボイスをオフにするため、同一ノートの重複再生がある場合は最後のボイスをオフにするように修正する。
                         #endif
                     }
                 }
