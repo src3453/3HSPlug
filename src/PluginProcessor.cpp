@@ -1115,7 +1115,12 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             // channelKeyShiftは値の更新がないため常に0で計算。同上
             int keyShift = 0;//(ch >= 1 && ch <= 16) ? channelKeyShift[ch - 1] : 0;
             int progIdx = currentProgram[ch-1];
-            auto patch = getEffectivePatch(currentBank[ch-1], progIdx);
+            Mutation mut;
+            mut.attackTime = channelCC[ch][73] - 64.0f;
+            mut.decayTime = channelCC[ch][75] - 64.0f;
+            mut.sustainLevel = 0.0f;
+            mut.releaseTime = channelCC[ch][71] - 64.0f;
+            auto patch = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut);
             int totalKeyShift = keyShift + patch.keyShift;
             int adjustedNote = note + totalKeyShift;
             
