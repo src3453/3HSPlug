@@ -626,7 +626,12 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         int baseAddr = 0x400000 + 0x40 * vIdx;
                         int bank = (baseAddr - 0x400000) / 0x40;
                         int progIdx = currentProgram[v.midiChannel-1];
-                        auto regs = getEffectivePatch(currentBank[ch-1], progIdx).toRegValues(vol);
+                        Mutation mut;
+                        mut.attackTime = channelCC[ch][73] - 64.0f;
+                        mut.decayTime = channelCC[ch][75] - 64.0f;
+                        mut.sustainLevel = 0.0f;
+                        mut.releaseTime = channelCC[ch][71] - 64.0f;
+                        auto regs = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut).toRegValues(vol);
                         
                         for (size_t i = 0x10; i < 0x18; ++i) {
                         s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + static_cast<int>(i), regs[i]);
