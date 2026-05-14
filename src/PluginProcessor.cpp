@@ -328,6 +328,8 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
+    bool patchAltered = false; // パッチが変更されたかどうかのフラグ
+
     // GMリセット検出（SysEx: F0 7E 7F 09 01 F7 またはCC#121=0）
     bool gmReset = false;
     for (const auto metadata : midiMessages)
@@ -724,25 +726,63 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         // エンベロープアタックタイム (Envelope Attack Time)
                         channelCC[ch][73] = msg.getControllerValue();
                         printf("[GS/XG] Envelope Attack Time (NRPN) Set: %d (ch %d)\n", channelCC[ch][73], ch);
+                        patchAltered = true; // パッチが変更されたフラグを立てる
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 100) {
                         // エンベロープディケイタイム (Envelope Decay Time)
                         channelCC[ch][75] = msg.getControllerValue();
                         printf("[GS/XG] Envelope Decay Time (NRPN) Set: %d (ch %d)\n", channelCC[ch][75], ch);
+                        patchAltered = true; // パッチが変更されたフラグを立てる
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 102) {
                         // エンベロープリリースタイム (Envelope Release Time)
                         channelCC[ch][72] = msg.getControllerValue();
                         printf("[GS/XG] Envelope Release Time (NRPN) Set: %d (ch %d)\n", channelCC[ch][72], ch);
+                        patchAltered = true; // パッチが変更されたフラグを立てる
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 32) {
                         // LPFカットオフ (LPF Cutoff)
                         channelCC[ch][74] = msg.getControllerValue();
                         printf("[GS/XG] LPF Cutoff (NRPN) Set: %d (ch %d)\n", channelCC[ch][74], ch);
+                        patchAltered = true; // パッチが変更されたフラグを立てる
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 33) {
                         // LPFレゾナンス (LPF Resonance)
                         channelCC[ch][71] = msg.getControllerValue();
                         printf("[GS/XG] LPF Resonance (NRPN) Set: %d (ch %d)\n", channelCC[ch][71], ch);
+                        patchAltered = true; // パッチが変更されたフラグを立てる
                     }                
                 }
+                if (msg.getControllerNumber() >= 71 && msg.getControllerNumber() <= 75) {
+                    // エンベロープやLPFのCC受信時もパッチ変更フラグを立てる
+                    patchAltered = true;
+                }
                         
+            }
+            if (patchAltered) {
+                // パッチが変更されたフラグが立っている場合、現在のプログラムに対してエフェクトを適用してレジスタを更新
+                int progIdx = currentProgram[ch-1];
+                auto& effectivePatch = getEffectivePatch(currentBank[ch-1], progIdx);
+                Mutation mut;
+                mut.attackTime = channelCC[ch][73] - 64.0f;
+                mut.decayTime = channelCC[ch][75] - 64.0f;
+                mut.sustainLevel = 0.0f;
+                mut.releaseTime = channelCC[ch][72] - 64.0f;
+                mut.LPFCutoff = channelCC[ch][74] - 64.0f;
+                mut.LPFResonance = channelCC[ch][71] - 64.0f;
+                auto regs = effectivePatch.applyMutation(mut).toRegValues(0); // 音量は個別に計算するため0で取得
+                for (int flat = 0; flat < numChips * numVoices; ++flat) {
+                    auto& v = voiceSlots[flat];
+                    if (v.inUse && v.midiChannel == ch) {
+                        int chip = flat / numVoices;
+                        int vIdx = flat % numVoices;
+                        int baseAddr = 0x400000 + 0x40 * vIdx;
+                        for (size_t i = 0x10; i < 0x18; ++i) {// OP Modulator Amount
+                            if (!effectivePatch.volumeScalingNeeded(i-0x10)) {
+                                s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + static_cast<int>(i), regs[i]);
+                            }
+                        }
+                        for (size_t i = 0x20; i < 0x40; ++i) {// ADSR
+                            s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + static_cast<int>(i), regs[i]);
+                        }
+                    }
+                }
             }
 
             //printf("[MIDI] CC# %d: %d (ch %d)\n", msg.getControllerNumber(), msg.getControllerValue(), ch);
