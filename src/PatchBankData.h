@@ -4,11 +4,10 @@
 #include <array>
 #include <cstdint>
 #include <string>
+#include "VolumeScalingMap.h"
 
 #define PATCH_BANK_SIZE 128
 #define MAX_BANKS 128  // 最大バンク数（GSバンク対応）
-
-
 
 // オペレーター 構造体
 struct Operator {
@@ -45,14 +44,18 @@ struct Patch {
     // レジスタ値配列へ変換
     std::array<uint8_t, 64> toRegValues(uint8_t midiVolume = 255);
     Patch applyMutation(const Mutation& mutation);
+    bool volumeScalingNeeded(int operatorIndex) const {
+        if (modmode < 13) {
+            return volumeScalingMap[modmode][operatorIndex];
+        }
+        return false; // デフォルトはスケーリングなし
+    }
 };
 
 // バンクごとのパッチ定義（GSバンク対応）
 extern std::vector<std::vector<Patch>> PatchBanks;
 extern std::vector<std::vector<Patch>> PatchBanksOriginal;
 extern Patch defaultPatch; // デフォルトパッチ
-extern bool volumeScalingMap[13][8]; // volumeScalingMapをexternで宣言
-
 
 void initializePatchBanks(const std::string& patchesDir = "patches/");
 bool loadPatchBankFromYAML(const std::string& filePath);
