@@ -27,6 +27,8 @@ struct Mutation {
     float releaseTime = 0.0f;
     float LPFCutoff = 0.0f;
     float LPFResonance = 0.0f;
+    float CarrierFreqShift = 0.0f; // 1/4096単位で周波数倍率に加算する
+    float ModulatorFreqShift = 0.0f; // 1/4096単位で周波数倍率に加算する
 };
 
 // パッチ（MIDIプログラム番号ごとのレジスタ設定）構造体

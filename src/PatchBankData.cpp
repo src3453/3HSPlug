@@ -234,6 +234,11 @@ Patch Patch::applyMutation(const Mutation& mutation) {
             // FM音源なので、LPFカットオフはモジュレーションデプスにする（単純な加算で表現）
             mutatedPatch.operators[i].volume = CLAMP((float)mutatedPatch.operators[i].volume + mutation.LPFCutoff, 0.0f, 255.0f);
         }
+        if (i%2 == 0) {
+            mutatedPatch.operators[i].frequency = static_cast<uint16_t>(CLAMP((float)mutatedPatch.operators[i].frequency + mutation.CarrierFreqShift, 0.0f, 65535.0f));
+        } else {
+            mutatedPatch.operators[i].frequency = static_cast<uint16_t>(CLAMP((float)mutatedPatch.operators[i].frequency + mutation.ModulatorFreqShift, 0.0f, 65535.0f));
+        }
     }
     return mutatedPatch;
 };
