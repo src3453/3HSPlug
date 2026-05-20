@@ -54,6 +54,7 @@ void _3HSPlugAudioProcessor::resetGM()
         channelCC[ch][75] = 64; // ディケイタイム
         channelCC[ch][74] = 64; // LPFカットオフ
         channelCC[ch][71] = 64; // LPFレゾナンス
+        channelCC[ch][93] = 0;  // コーラスレベル (FMオペレーター周波数シフト用)
         
         if (ch >= 1 && ch <= 16) {
             int arrayIdx = ch - 1;
@@ -312,6 +313,20 @@ bool _3HSPlugAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts)
 }
 #endif
 
+
+Mutation DoMutation(const uint8_t ccValues[128]) {
+    // CC値からMutation構造体を生成する関数
+    Mutation mut;
+    mut.attackTime = ccValues[73] - 64.0f;
+    mut.decayTime = ccValues[75] - 64.0f;
+    mut.sustainLevel = 0.0f;
+    mut.releaseTime = ccValues[72] - 64.0f;
+    mut.LPFCutoff = ccValues[74] - 64.0f;
+    mut.LPFResonance = ccValues[71] - 64.0f;
+    mut.ModulatorFreqShift = ccValues[93];
+    return mut;
+}
+
 void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedLock sl(processLock);
@@ -329,6 +344,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         buffer.clear (i, 0, buffer.getNumSamples());
 
     bool patchAltered = false; // パッチが変更されたかどうかのフラグ
+    bool CCUpdated = false; // CCが更新されたかどうかのフラグ
 
     // GMリセット検出（SysEx: F0 7E 7F 09 01 F7 またはCC#121=0）
     bool gmReset = false;
@@ -415,7 +431,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             // All Sound Off: 指定チャンネルの音のみを停止
             int targetChannel = msg.getChannel();
             printf("[MIDI] All Sound Off at CH%d\n", targetChannel);
-            
+            CCUpdated = true; // 更新フラグを立てる
             // FM音源ボイス：該当チャンネルのみを音量0ダミーノートで上書き
             for (int flat = 0; flat < numChips * numVoices; ++flat) {
                 auto& v = voiceSlots[flat];
@@ -493,7 +509,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     {
         // GMリセット時も音量0ダミーノート方式で即座に停止
         printf("[MIDI] GM Reset executed (dummy note method)\n");
-        
+        CCUpdated = true;
         // FM音源ボイスを音量0ダミーノートで上書き
         for (int flat = 0; flat < numChips * numVoices; ++flat) {
             int chip = flat / numVoices;
@@ -559,7 +575,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         // CC#7: ボリューム, CC#11: エクスプレッション, CC#64: Sustain Pedal
         if (msg.isController()) { // MIDI CCメッセージを解析し、必要に応じてレジスタを更新する
             this->channelCC[ch][msg.getControllerNumber()] = msg.getControllerValue();
-            
+            CCUpdated = true; // 更新フラグを立てる
             // CC#0 (Bank Select MSB) 処理 - バンク変更 (例: 008:080: Sine Wave)
             if (msg.getControllerNumber() == 0) {
                 if (!pcOverrideEnabled) {
@@ -630,13 +646,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         int baseAddr = 0x400000 + 0x40 * vIdx;
                         int bank = (baseAddr - 0x400000) / 0x40;
                         int progIdx = currentProgram[v.midiChannel-1];
-                        Mutation mut;
-                        mut.attackTime = channelCC[ch][73] - 64.0f;
-                        mut.decayTime = channelCC[ch][75] - 64.0f;
-                        mut.sustainLevel = 0.0f;
-                        mut.releaseTime = channelCC[ch][72] - 64.0f;
-                        mut.LPFCutoff = channelCC[ch][74] - 64.0f;
-                        mut.LPFResonance = channelCC[ch][71] - 64.0f;
+                        auto mut = DoMutation(this->channelCC[v.midiChannel]);
                         auto regs = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut).toRegValues(vol);
                         
                         for (size_t i = 0x10; i < 0x18; ++i) {
@@ -759,13 +769,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 // パッチが変更されたフラグが立っている場合、現在のプログラムに対してエフェクトを適用してレジスタを更新
                 int progIdx = currentProgram[ch-1];
                 auto& effectivePatch = getEffectivePatch(currentBank[ch-1], progIdx);
-                Mutation mut;
-                mut.attackTime = channelCC[ch][73] - 64.0f;
-                mut.decayTime = channelCC[ch][75] - 64.0f;
-                mut.sustainLevel = 0.0f;
-                mut.releaseTime = channelCC[ch][72] - 64.0f;
-                mut.LPFCutoff = channelCC[ch][74] - 64.0f;
-                mut.LPFResonance = channelCC[ch][71] - 64.0f;
+                auto mut = DoMutation(this->channelCC[ch]);
                 auto regs = effectivePatch.applyMutation(mut).toRegValues(0); // 音量は個別に計算するため0で取得
                 for (int flat = 0; flat < numChips * numVoices; ++flat) {
                     auto& v = voiceSlots[flat];
@@ -994,13 +998,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 int bendRange = (ch >= 1 && ch <= 16) ? (channelPitchBendRange[ch - 1] ? channelPitchBendRange[ch - 1] : 2) : 2; // デフォルト2
 
                 int progIdx = currentProgram[ch-1];
-                Mutation mut;
-                mut.attackTime = channelCC[ch][73] - 64.0f;
-                mut.decayTime = channelCC[ch][75] - 64.0f;
-                mut.sustainLevel = 0.0f;
-                mut.releaseTime = channelCC[ch][72] - 64.0f;
-                mut.LPFCutoff = channelCC[ch][74] - 64.0f;
-                mut.LPFResonance = channelCC[ch][71] - 64.0f;
+                auto mut = DoMutation(this->channelCC[ch]);
                 auto patch = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut);
                 int totalKeyShift = keyShift + patch.keyShift;
 
@@ -1174,13 +1172,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             // channelKeyShiftは値の更新がないため常に0で計算。同上
             int keyShift = 0;//(ch >= 1 && ch <= 16) ? channelKeyShift[ch - 1] : 0;
             int progIdx = currentProgram[ch-1];
-            Mutation mut;
-            mut.attackTime = channelCC[ch][73] - 64.0f;
-            mut.decayTime = channelCC[ch][75] - 64.0f;
-            mut.sustainLevel = 0.0f;
-            mut.releaseTime = channelCC[ch][72] - 64.0f;
-            mut.LPFCutoff = channelCC[ch][74] - 64.0f;
-            mut.LPFResonance = channelCC[ch][71] - 64.0f;
+            auto mut = DoMutation(this->channelCC[ch]);
             auto patch = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut);
             int totalKeyShift = keyShift + patch.keyShift;
             int adjustedNote = note + totalKeyShift;
