@@ -39,7 +39,7 @@ void _3HSPlugAudioProcessor::resetGM()
         for (int cc = 0; cc < 128; ++cc) {
             channelCC[ch][cc] = 0;
         }
-        #ifdef USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY
+        #if USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY
         currentRollingIndex = 0; // ローリングチャンネル割り当て戦略用インデックスをリセット
         #endif
         channelCC[ch][10] = 64;  // パン
@@ -819,7 +819,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         // プログラムチェンジ処理
         if (msg.isProgramChange())
         {
-            #ifdef PROGRAM_CHANGE_ALSO_ALL_SOUNDS_OFF
+            #if PROGRAM_CHANGE_ALSO_ALL_SOUNDS_OFF == 1
                 // プログラムチェンジ受信時、同チャンネルの全ONボイスを音量0ダミーノートで上書きしてからプログラム変更を適用
                 int targetChannel = msg.getChannel();
                 for (int flat = 0; flat < numChips * numVoices; ++flat) {
@@ -1011,7 +1011,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
                 float freq = 440.0f * std::pow(2.0f, ((note + totalKeyShift + bendSemis) - 69) / 12.0f);
                 int freqInt = static_cast<int>(freq);
-                #ifdef USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY
+                #if USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY == 1
                 // ローリングチャンネル割り当て戦略: 常に次のスロットを使用する。もし該当スロットが使用中なら、次の空きスロットを探す。
                 int voiceIndex = currentRollingIndex;
                 // Held Listにnoteがある場合はそれを上書きする。なければ、もしスロットが使用中なら次の空きスロットを探す。
@@ -1391,7 +1391,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
         // ..do something to the data...
     }
-    currentTick += buffer.getNumSamples(); // 現在のtickカウントを更新
+    currentTick += 1; // 現在のtickカウントを更新
     
     // 音声合成処理時間測定終了
     auto synthEndTime = std::chrono::high_resolution_clock::now();
@@ -1737,7 +1737,7 @@ void _3HSPlugAudioProcessor::setNumChips(int n)
         
         // 状態リセット
         allNotesOff();
-        #ifdef USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY // 未割当インデックスによる例外回避
+        #if USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY == 1 // 未割当インデックスによる例外回避
         currentRollingIndex = 0; // ローリングチャンネル割り当て戦略用インデックスをリセット
         #endif
         
