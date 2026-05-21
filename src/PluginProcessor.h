@@ -9,9 +9,10 @@
 #include "DrumKeymapManager.h"
 #include "s3hs_core/sound.cpp"
 
-#define USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY // チャンネル割り当て戦略の切り替え（定義するとローリング戦略、未定義で従来の戦略）
-#define EMULATE_MSGS_RELEASE_BEHAVIOR // MSGSのリリース挙動をエミュレートするか（定義するとMSGSのように同一ノートのすべてのスロットをオフにする、未定義で一般的なシンセのように最後に押されたノートだけオフにする）
-#define PROGRAM_CHANGE_ALSO_ALL_SOUNDS_OFF // プログラムチェンジで全音オフするか（定義するとプログラムチェンジで全音オフ、未定義で全音オフしない）
+#define USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY 1 // チャンネル割り当て戦略の切り替え（定義するとローリング戦略、未定義で従来の戦略）
+#define EMULATE_MSGS_RELEASE_BEHAVIOR 1 // MSGSのリリース挙動をエミュレートするか（定義するとMSGSのように同一ノートのすべてのスロットをオフにする、未定義で一般的なシンセのように最後に押されたノートだけオフにする）
+#define PROGRAM_CHANGE_ALSO_ALL_SOUNDS_OFF 1 // プログラムチェンジで全音オフするか（定義するとプログラムチェンジで全音オフ、未定義で全音オフしない）
+#define CUT_NOTE_IN_FIRST_TICK 0 // ノートオンの時に1tickのみ音を切り、それ以降は通常の音量で鳴らす（定義するとノートオンの最初のtickだけ音量0で鳴らす、未定義で通常通り鳴らす、SNESの音声ドライバの挙動を再現）
 // ドラムPCMチャンネルデバッグ情報構造体
 struct DrumPcmChannelDebugInfo {
     int noteNumber = -1;
