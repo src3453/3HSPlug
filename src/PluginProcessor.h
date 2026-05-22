@@ -157,6 +157,13 @@ public:
     // RAMダンプ取得（PCM, 1チップ目、0x000000～0x000FFF）
     std::vector<uint8_t> getRamDumpPCM() const;
 
+    // GS Dot Matrix Data (64 bytes)
+    std::array<uint8_t, 64> gsDotMatrixData{};
+    std::atomic<bool> gsDotMatrixUpdated{false};
+    std::string TextDisplayData; // GS/XGテキストディスプレイの内容
+    std::string TextDisplayData2; // XGテキストディスプレイの内容（2行目）
+    std::atomic<bool> gsTextUpdated{false};
+
 private:
         //==============================================================================
     // S3HS音源エンジン

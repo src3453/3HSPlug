@@ -54,6 +54,7 @@ public:
     //==============================================================================
     void paint (juce::Graphics&) override;
     void resized() override;
+    void updateGSDotMatrix(const uint8_t* dotData); // ドットマトリクス更新関数
 
 private:
     // This reference is provided as a quick way for your editor to
@@ -94,6 +95,9 @@ private:
     juce::TextEditor pcOverrideBankEditor;
     juce::Label pcOverrideProgramLabel;
     juce::TextEditor pcOverrideProgramEditor;
+
+    bool dotData[16][16] = {{false}}; // ドットマトリクスの状態を保持する2次元配列（16x16）
+    std::string gsTextData; // GSテキストディスプレイデータ
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (_3HSPlugAudioProcessorEditor)
 };
