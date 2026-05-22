@@ -55,6 +55,7 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void updateGSDotMatrix(const uint8_t* dotData); // ドットマトリクス更新関数
+    void updateChannelActivitityMonitor(); // チャンネルアクティビティモニター更新関数
 
 private:
     // This reference is provided as a quick way for your editor to
@@ -98,6 +99,9 @@ private:
 
     bool dotData[16][16] = {{false}}; // ドットマトリクスの状態を保持する2次元配列（16x16）
     std::string gsTextData; // GSテキストディスプレイデータ
+    float channelActivities[16] = {0.0f}; // チャンネルアクティビティの状態を保持する配列（0.0～1.0）
+    uint64_t lastChannelUpdateTick[16] = {0}; // チャンネルの最後の更新時刻（各チャンネルごと）
+    bool channelActivityDotData[16][16] = {{false}}; // チャンネルアクティビティのドットマトリクスデータ（16チャンネル×16レベル）
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (_3HSPlugAudioProcessorEditor)
 };

@@ -22,6 +22,7 @@ struct DrumPcmChannelDebugInfo {
     int midiChannel = -1;
     int velocity = 0;
     uint64_t lastUsedTick = 0;
+    int volume = 0;
 };
 
 // ドラムPCMチャンネル状態管理構造体
@@ -30,6 +31,7 @@ struct DrumPcmChannelState {
     int noteNumber = -1;
     int midiChannel = -1;
     int velocity = 0;
+    int volume = 0;
     uint64_t lastUsedTick = 0;
     uint32_t pcmAddr = 0;
     uint32_t sampleRate = 0;
@@ -163,6 +165,8 @@ public:
     std::string TextDisplayData; // GS/XGテキストディスプレイの内容
     std::string TextDisplayData2; // XGテキストディスプレイの内容（2行目）
     std::atomic<bool> gsTextUpdated{false};
+    int64_t lastGSDotUpdateTick = std::numeric_limits<int64_t>::min(); // ドットマトリクスの最後の更新時刻（tick単位）
+    int64_t lastGSTextUpdateTick = std::numeric_limits<int64_t>::min(); // テキストディスプレイの最後の更新時刻（tick単位）
 
 private:
         //==============================================================================
