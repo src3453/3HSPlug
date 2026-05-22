@@ -189,7 +189,7 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor (_3HSPlugAudioProcess
     //addAndMakeVisible(*hexDumpViewer);
 
     // ウィンドウサイズを横側に拡張（既存の情報表示 + 16進ダンプビューアー）
-    setSize (600, 750);
+    setSize (725, 825);
     setResizable(true, true);
     setResizeLimits(300, 300, 2560, 1440); // 最小サイズも調整
     startTimerHz(60); // 60HzでtimerCallback()を呼ぶ
@@ -494,7 +494,35 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
     juce::String bufferText = "Buffer Size: " + juce::String(static_cast<int>(audioProcessor.getBlockSize())) + " samples";
     g.drawFittedText(bufferText, barStartX, bufferSizeTextY, 300, 16, juce::Justification::centredLeft, 1);
 
+    // GS Dot Matrix 描画 (16x16)
+    int dmStartX = barStartX + 320 + 100; // 画面右側の空いているスペース
+    int dmStartY = cpuBarY;
+    g.setColour(juce::Colours::white);
+    g.setFont(juce::Font(20.0f, juce::Font::bold));
+    // GS Text Display 描画
+    juce::String viewText = "GS Text Display "; // 16文字まで表示可能 (XGでは16文字*2行)
+    juce::String text = juce::String::fromUTF8(gsTextData.c_str());
+    if (text.isNotEmpty()) {
+        viewText = text;
+    }
+    g.drawFittedText(viewText, dmStartX, dmStartY - 25, 400, 20, juce::Justification::centredLeft, 1);
+    
+    int dotSizeHeight = 8;
+    int dotSizeWidth = 16;
+    int dotSpacing = 1;
+    for (int row = 0; row < 16; ++row) {
+        for (int col = 0; col < 16; ++col) {
+            if (dotData[row][col]) {
+                g.setColour(juce::Colours::black); // 黒(ON)に相当
+            } else {
+                g.setColour(juce::Colours::orange);  // 白(OFF)に相当
+            }
+            g.fillRect(dmStartX + col * (dotSizeWidth + dotSpacing), dmStartY + row * (dotSizeHeight + dotSpacing), dotSizeWidth, dotSizeHeight);
+        }
+    }
 }
+
+    
 
 void _3HSPlugAudioProcessorEditor::resized()
 {
@@ -532,8 +560,36 @@ void _3HSPlugAudioProcessorEditor::resized()
     //}
 }
 
+void _3HSPlugAudioProcessorEditor::updateGSDotMatrix(const uint8_t* newData)
+{
+    if (newData == nullptr) return;
+    for (int row = 0; row < 16; ++row) {
+        int col = 0;
+        for (int i = 4; i >= 0; --i) {
+            dotData[row][col++] = (newData[row] >> i) & 1;
+        }
+        for (int i = 4; i >= 0; --i) {
+            dotData[row][col++] = (newData[row + 16] >> i) & 1;
+        }
+        for (int i = 4; i >= 0; --i) {
+            dotData[row][col++] = (newData[row + 32] >> i) & 1;
+        }
+        dotData[row][col] = (newData[row + 48] >> 4) & 1;
+    }
+}
+
 void _3HSPlugAudioProcessorEditor::timerCallback()
 {
+    // GSドットマトリクスデータの更新チェック
+    if (audioProcessor.gsDotMatrixUpdated.exchange(false)) {
+        updateGSDotMatrix(audioProcessor.gsDotMatrixData.data());
+    }
+
+    // GSテキストデータの更新チェック
+    if (audioProcessor.gsTextUpdated.exchange(false)) {
+        gsTextData = audioProcessor.TextDisplayData;
+    }
+
     // 既存のGUI要素を再描画
     repaint();
     

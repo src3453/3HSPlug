@@ -327,6 +327,36 @@ Mutation DoMutation(const uint8_t ccValues[128]) {
     return mut;
 }
 
+std::array<std::array<bool, 16>, 16> updateGSDotMatrix(const uint8_t* dotData)
+{
+    // GSドットマトリクスの更新処理をここに実装
+    // GSドットマトリクスは16x16のドット(1bpp、白=0/黒=1)で構成されており、64バイトのデータで表現される
+    // dotDataは64バイトの配列で、各バイトのビットがドットのON/OFFを表す
+    // データは5bitずつ (最後のバイトは1bitのみ) 16行分で構成されている
+    // dotData[0]のビット4-0が0行目0-4列目のドット、dotData[16]のビット4-0が0行目5-9列目のドット...dotData[48]のビット4が0行目15列目のドットというように処理する
+    if (dotData == nullptr) {
+        return {}; // 無効なデータの場合は空のマトリクスを返す
+    }
+    if (sizeof(dotData) < 64) {
+        return {}; // データサイズが不足している場合も空のマトリクスを返す
+    }
+    std::array<std::array<bool, 16>, 16> matrix; // ドットマトリクスの状態を保持する2次元配列（16x16）
+    for (int row = 0; row < 16; ++row) {
+        int col = 0;
+        for (int i = 4; i >= 0; --i) {
+            matrix[row][col++] = (dotData[row] >> i) & 1;
+        }
+        for (int i = 4; i >= 0; --i) {
+            matrix[row][col++] = (dotData[row + 16] >> i) & 1;
+        }
+        for (int i = 4; i >= 0; --i) {
+            matrix[row][col++] = (dotData[row + 32] >> i) & 1;
+        }
+        matrix[row][col] = (dotData[row + 48] >> 4) & 1;
+    }
+    return matrix; // ドットマトリクスの状態を返す（必要に応じてクラスメンバに保存するなどしても良い）
+}
+
 void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedLock sl(processLock);
@@ -364,6 +394,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
             printf("\n");
         }
 
+        // 3HSPlug SysEx Data Entry (SysEx: F0 7D 33 48 <addr> <datas> <checksum> F7)
         // 3HSPlug Patch Override (SysEx: F0 7D 33 48 00 <bank#(00~7F)> <patch#(00~7F)> <relative addr(00~3F)> <data MSB(00~0F)> <data LSB(00~0F)> <checksum> F7)
 
         if (msg.isSysEx() && msg.getSysExDataSize() == 10 && msg.getSysExData()[0] == 0x7D && 
@@ -381,6 +412,37 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                 setPatchOverride(bankNumber, patchNumber, relativeAddr, value);
             }
         }
+
+        // GS Data Set 1 (SysEx: F0 41 10 42 12 <addr 3 bytes BE> <datas> <checksum> F7)
+        // GS Dot Matrix Set (GS Address: 0x10_01_00) (SysEx: F0 41 10 42(45?) 12 10 01 00 <data 64 bytes> <checksum> F7)
+        
+        if (msg.isSysEx() && msg.getSysExDataSize() >= 22) {// loosened sysex check for GSドットマトリクスセット{
+            const uint8* data = msg.getSysExData();
+            if (data[0] == 0x41 && data[1] == 0x10 && data[3] == 0x12 && data[4] == 0x10 && data[5] == 0x01 && data[6] == 0x00) {
+                printf("[GS] Dot Matrix Set received\n");
+                // ドットマトリクスの更新処理をここに実装
+                if (msg.getSysExDataSize() >= 7 + 64) {
+                    std::copy(data + 7, data + 7 + 64, gsDotMatrixData.begin());
+                    gsDotMatrixUpdated.store(true);
+                }
+            }
+        }
+
+        // GS Text Display (Patch Name) Set (GS Address: 0x10_00_00) (SysEx: F0 41 10 42 12 10 00 00 <ASCII> <checksum> F7)
+            if (msg.isSysEx() && msg.getSysExDataSize() >= 11) {// loosened sysex check for GSテキストディスプレイセット
+                const uint8* data = msg.getSysExData();
+                if (data[0] == 0x41 && data[1] == 0x10 && data[3] == 0x12 && data[4] == 0x10 && data[5] == 0x00 && data[6] == 0x00) {
+                    printf("[GS] Text Display Set received: ");
+                    std::string text;
+                    for (int i = 7; i < msg.getSysExDataSize() - 1; ++i) { // 最後の1バイトはチェックサムなので除外
+                        text += static_cast<char>(data[i]);
+                    }
+                    TextDisplayData = text;
+                    gsTextUpdated.store(true);
+                    printf("%s\n", text.c_str());
+                    // テキストディスプレイの更新処理をここに実装（必要に応じてクラスメンバに保存するなどしても良い）
+                }
+            }
 
         // GM Reset (SysEx: F0 7E 7F 09 01 F7)
         if (msg.isSysEx() && msg.getSysExDataSize() == 4)
@@ -1391,7 +1453,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
         // ..do something to the data...
     }
-    currentTick += 1; // 現在のtickカウントを更新
+    currentTick += buffer.getNumSamples(); // 現在のtickカウントを更新
     
     // 音声合成処理時間測定終了
     auto synthEndTime = std::chrono::high_resolution_clock::now();
