@@ -563,6 +563,11 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
             g.fillRect(dmStartX + col * (dotSizeWidth + dotSpacing), dmStartY + row * (dotSizeHeight + dotSpacing), dotSizeWidth, dotSizeHeight);
         }
     }
+    for (int col = 0; col < 16; ++col) {
+        g.setFont(juce::Font(10.0f));
+        g.setColour(juce::Colours::white);
+        g.drawFittedText(juce::String(col+1), dmStartX + col * (dotSizeWidth + dotSpacing), dmStartY + 16 * (dotSizeHeight + dotSpacing) + 3, dotSizeWidth, dotSizeHeight, juce::Justification::horizontallyCentred, 1);
+    }
 }
 
     
