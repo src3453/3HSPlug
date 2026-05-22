@@ -100,6 +100,7 @@ std::vector<DrumPcmChannelDebugInfo> _3HSPlugAudioProcessor::getDrumPcmChannelIn
             info.active = state.inUse;
             info.midiChannel = state.midiChannel;
             info.velocity = state.velocity;
+            info.volume = state.volume;
             info.lastUsedTick = state.lastUsedTick;
         } else {
             // デフォルト値
@@ -109,6 +110,7 @@ std::vector<DrumPcmChannelDebugInfo> _3HSPlugAudioProcessor::getDrumPcmChannelIn
             info.active = false;
             info.midiChannel = -1;
             info.velocity = 0;
+            info.volume = 0;
             info.lastUsedTick = 0;
         }
         
@@ -382,8 +384,8 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     {
         const auto msg = metadata.getMessage();
         // SysEx GM Reset
-        // JUCEのgetSysExData()では、SysExの1バイト目(0xF0)と最後の1バイトは取り除かれる
-        // 例: F0 7E 7F 09 01 F7 → {7E, 7F, 09, 01}
+        // JUCEのgetSysExData()では、SysExの1バイト目(0xF0)と最後の1バイト(0xF7)は取り除かれる
+        // 例: F0 7E 7F 09 01 F7 → {0x7E, 0x7F, 0x09, 0x01}
 
         if (msg.isSysEx()) {
             const uint8* data = msg.getSysExData();
@@ -395,8 +397,14 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
         }
 
         // 3HSPlug SysEx Data Entry (SysEx: F0 7D 33 48 <addr> <datas> <checksum> F7)
+        // Data Entry Address List:
+        // 0x00: Patch Override Data Entry
+        // Not implemented yet, will be implemented soon:
+        // 0x01: Drum PCM Sample Load (Start Address: 0x000000 ~ 0x3FFFFF, Data: Length Varied, 8bit Unsigned PCM Data)
+        // 0x02: Drum PCM Sample Table Entry (Address: 0x000 ~ 0x7FF, Data: 16 bytes per entry, 128 entries (each corresponding to a drum sound) total)
+        // 0xFF: Reset Application (All Settings Reset and Reload All Data from Default)
+        
         // 3HSPlug Patch Override (SysEx: F0 7D 33 48 00 <bank#(00~7F)> <patch#(00~7F)> <relative addr(00~3F)> <data MSB(00~0F)> <data LSB(00~0F)> <checksum> F7)
-
         if (msg.isSysEx() && msg.getSysExDataSize() == 10 && msg.getSysExData()[0] == 0x7D && 
             msg.getSysExData()[1] == 0x33 && msg.getSysExData()[2] == 0x48 && msg.getSysExData()[3] == 0x00) {
             const uint8* data = msg.getSysExData();
@@ -425,6 +433,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     std::copy(data + 7, data + 7 + 64, gsDotMatrixData.begin());
                     gsDotMatrixUpdated.store(true);
                 }
+                this->lastGSDotUpdateTick = this->getCurrentTick(); // ドットマトリクスの更新時刻を記録
             }
         }
 
@@ -441,6 +450,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                     gsTextUpdated.store(true);
                     printf("%s\n", text.c_str());
                     // テキストディスプレイの更新処理をここに実装（必要に応じてクラスメンバに保存するなどしても良い）
+                    this->lastGSTextUpdateTick = this->getCurrentTick(); // テキストディスプレイの更新時刻を記録
                 }
             }
 
@@ -1035,6 +1045,7 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
                         drumState.noteNumber = note;
                         drumState.midiChannel = ch;
                         drumState.velocity = velocity;
+                        drumState.volume = vol;
                         drumState.lastUsedTick = currentTick;
                         drumState.pcmAddr = pcmAddr_Start;
                         drumState.sampleRate = info.sampleRate;
@@ -1688,6 +1699,7 @@ void _3HSPlugAudioProcessor::allNotesOff()
         drumState.noteNumber = -1;
         drumState.midiChannel = 0;
         drumState.velocity = 0;
+        drumState.volume = 0;
         drumState.lastUsedTick = currentTick;
     }
     

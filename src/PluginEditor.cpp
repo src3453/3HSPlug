@@ -123,6 +123,42 @@ void HexDumpViewer::mouseWheelMove(const juce::MouseEvent& event, const juce::Mo
     }
 }
 
+void _3HSPlugAudioProcessorEditor::updateChannelActivitityMonitor()
+{
+    const auto& slots = audioProcessor.getVoiceSlots();
+    int totalVoices = static_cast<int>(slots.size());
+    int numChips = audioProcessor.getNumChips();
+    int numVoices = audioProcessor.numVoices * numChips; // チップ数を考慮した総ボイス数
+    int numVoicesDrum = audioProcessor.drumPcmChannelStates.size(); // ドラムPCMチャンネル数
+
+    for (int voice = 0; voice < numVoices; ++voice) {
+        if (slots[voice].inUse) {
+            int ch = slots[voice].midiChannel - 1; // MIDIチャンネルは1から始まるので、0ベースに変換
+            if (slots[voice].volume / 255.0f > channelActivities[ch]) {
+                channelActivities[ch] = slots[voice].volume / 255.0f;
+                lastChannelUpdateTick[ch] = audioProcessor.getCurrentTick();
+            }
+        }
+    }
+    for (int voice = 0; voice < numVoicesDrum; ++voice) {
+        if (audioProcessor.drumPcmChannelStates[voice].inUse) {
+            int ch = audioProcessor.drumPcmChannelStates[voice].midiChannel - 1; // MIDIチャンネルは1から始まるので、0ベースに変換
+            if (audioProcessor.drumPcmChannelStates[voice].volume / 255.0f > channelActivities[ch] 
+                && audioProcessor.getCurrentTick() - audioProcessor.drumPcmChannelStates[voice].lastUsedTick < 2100) { // 最後に使用された時間が2100フレーム以内の場合
+                channelActivities[ch] = audioProcessor.drumPcmChannelStates[voice].volume / 255.0f;
+                lastChannelUpdateTick[ch] = audioProcessor.getCurrentTick();
+            }
+        }
+    }
+    for (int ch = 0; ch < 16; ++ch) {
+        for (int level = 0; level < 16; ++level) {
+            channelActivityDotData[15-level][ch] = channelActivities[ch] >= level * 0.0625f; // 1/16以上で点灯 (最下段は常に点灯)
+        }
+        channelActivities[ch] -= 0.02f; // 毎フレーム少しずつ減衰させる
+        channelActivities[ch] = juce::jmax(0.0f, channelActivities[ch]); // 0未満にならないようにする
+    }
+}
+
 //==============================================================================
 
 //==============================================================================
@@ -497,12 +533,14 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
     // GS Dot Matrix 描画 (16x16)
     int dmStartX = barStartX + 320 + 100; // 画面右側の空いているスペース
     int dmStartY = cpuBarY;
+    #define TIME_TO_HIDE_GS_DOT_MATRIX 120000 // ドットマトリクスを表示してから5秒後に自動的に消す
+    #define TIME_TO_HIDE_GS_TEXT_DISPLAY 120000 // テキスト表示を表示してから5秒後に自動的に消す
     g.setColour(juce::Colours::white);
     g.setFont(juce::Font(20.0f, juce::Font::bold));
     // GS Text Display 描画
     juce::String viewText = "GS Text Display "; // 16文字まで表示可能 (XGでは16文字*2行)
     juce::String text = juce::String::fromUTF8(gsTextData.c_str());
-    if (text.isNotEmpty()) {
+    if (text.isNotEmpty() && (audioProcessor.getCurrentTick() - audioProcessor.lastGSTextUpdateTick) < TIME_TO_HIDE_GS_TEXT_DISPLAY) {
         viewText = text;
     }
     g.drawFittedText(viewText, dmStartX, dmStartY - 25, 400, 20, juce::Justification::centredLeft, 1);
@@ -510,9 +548,14 @@ void _3HSPlugAudioProcessorEditor::paint (juce::Graphics& g)
     int dotSizeHeight = 8;
     int dotSizeWidth = 16;
     int dotSpacing = 1;
+    this->updateChannelActivitityMonitor(); // チャンネルアクティビティのドットマトリクスデータを更新
+    auto data = this->channelActivityDotData; // デフォルトはチャンネルアクティビティのドットマトリクスデータを参照
+    if ((audioProcessor.getCurrentTick() - audioProcessor.lastGSDotUpdateTick) < TIME_TO_HIDE_GS_DOT_MATRIX) {
+        data = this->dotData; // ドットマトリクスのデータを参照
+    }
     for (int row = 0; row < 16; ++row) {
         for (int col = 0; col < 16; ++col) {
-            if (dotData[row][col]) {
+            if (data[row][col]) {
                 g.setColour(juce::Colours::black); // 黒(ON)に相当
             } else {
                 g.setColour(juce::Colours::orange);  // 白(OFF)に相当
