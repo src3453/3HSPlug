@@ -610,7 +610,7 @@
       "program": 14,
       "modmode": 6,
       "feedback": 128,
-      "keyShift": 0,
+      "keyShift": -12,
       "operators": [
         {
           "waveform": 0,
