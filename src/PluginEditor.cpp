@@ -216,6 +216,15 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor (_3HSPlugAudioProcess
     };
     addAndMakeVisible(pcOverrideProgramEditor);
 
+    frequencyQuantizeFrequencyLabel.setText("Freq Quant (Hz):", juce::dontSendNotification);
+    addAndMakeVisible(frequencyQuantizeFrequencyLabel);
+    frequencyQuantizeFrequencyEditor.setText(juce::String(audioProcessor.getFrequencyQuantizeFrequency()));
+    frequencyQuantizeFrequencyEditor.setInputRestrictions(7, "0123456789");
+    frequencyQuantizeFrequencyEditor.onTextChange = [this] {
+        audioProcessor.setFrequencyQuantizeFrequency(frequencyQuantizeFrequencyEditor.getText().getIntValue());
+    };
+    addAndMakeVisible(frequencyQuantizeFrequencyEditor);
+
     // オシロスコープコンポーネントを作成
     //multiOscilloscope = std::make_unique<MultiOscilloscopeComponent>();
     //addAndMakeVisible(*multiOscilloscope);
@@ -595,6 +604,9 @@ void _3HSPlugAudioProcessorEditor::resized()
     pcOverrideBankEditor.setBounds(x + 40, startY, 50, 24);
     pcOverrideProgramLabel.setBounds(x + 100, startY, 40, 24);
     pcOverrideProgramEditor.setBounds(x + 140, startY, 50, 24);
+
+    //frequencyQuantizeFrequencyLabel.setBounds(x, startY + 30, 120, 24);
+    //frequencyQuantizeFrequencyEditor.setBounds(x + 120, startY + 30, 50, 24);
     
     // 右側に16進ダンプビューアーを配置
     if (hexDumpViewer != nullptr) {

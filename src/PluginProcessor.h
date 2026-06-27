@@ -150,6 +150,10 @@ public:
     int getNumVoices() const noexcept { return numChips * numVoices; }
     int getNumChips() const noexcept { return numChips; }
     void setNumChips(int n);
+
+    std::atomic<int> frequencyQuantizeFrequency{0}; // 周波数量子化の基準周波数（0の場合は量子化なし）
+    void setFrequencyQuantizeFrequency(int frequency);
+    int getFrequencyQuantizeFrequency();
     
     // パンポット値取得関数
     std::pair<int, int> getVoicePanValues(int voiceIndex) const;
