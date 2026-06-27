@@ -97,6 +97,9 @@ private:
     juce::Label pcOverrideProgramLabel;
     juce::TextEditor pcOverrideProgramEditor;
 
+    juce::Label frequencyQuantizeFrequencyLabel;
+    juce::TextEditor frequencyQuantizeFrequencyEditor;
+
     bool dotData[16][16] = {{false}}; // ドットマトリクスの状態を保持する2次元配列（16x16）
     std::string gsTextData; // GSテキストディスプレイデータ
     float channelActivities[16] = {0.0f}; // チャンネルアクティビティの状態を保持する配列（0.0～1.0）

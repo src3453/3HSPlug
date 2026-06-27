@@ -1536,6 +1536,20 @@ std::vector<std::vector<float>> _3HSPlugAudioProcessor::getChipAudioDataR(int ch
     return slicedData;
 }
 
+void _3HSPlugAudioProcessor::setFrequencyQuantizeFrequency(int frequency)
+{
+    frequencyQuantizeFrequency.store(frequency);
+    for (int chip = 0; chip < numChips; ++chip) {
+        std::lock_guard<std::mutex> lock(*voiceMutexes[chip]);
+        s3hsSounds[chip].setFrequencyQuantizeFrequency(frequency);
+    }
+}
+
+int _3HSPlugAudioProcessor::getFrequencyQuantizeFrequency()
+{
+    frequencyQuantizeFrequency.store(s3hsSounds[0].getFrequencyQuantizeFrequency());
+    return s3hsSounds[0].getFrequencyQuantizeFrequency(); // どのチップも同じ値を返すはずなので、最初のチップから取得
+}
 
 //==============================================================================
 bool _3HSPlugAudioProcessor::hasEditor() const

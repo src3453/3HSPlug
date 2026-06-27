@@ -51,6 +51,10 @@ public:
     EnvGenerator _envl;
     S3HS_Effecter effecter;
     float prev = 0;
+    //#define S3HS_MASTER_CLOCK (111860.79545) // in Hertz, example: NES APU period clock
+    #define S3HS_MASTER_CLOCK 192000.0f // in Hertz, 192KHz from specification
+    //#define S3HS_MASTER_CLOCK 48000.0f
+    int frequencyQuantizeFrequency = S3HS_MASTER_CLOCK; // 周波数量子化の基準周波数（0の場合は量子化なし）
     unsigned int pcm_addr[4],pcm_addr_end[4],pcm_loop_start[4],pcm_loop_end[4]={0,0,0,0};
     std::vector<std::vector<Byte>> pcm_ram; 
 
@@ -231,20 +235,28 @@ public:
         envl.at((size_t)(ch*8+opNum)).update(adsr,dt);
     }
 
-    //#define S3HS_MASTER_CLOCK (111860.79545) // in Hertz, example: NES APU period clock
-    #define S3HS_MASTER_CLOCK 192000.0f // in Hertz, 192KHz from specification
-    //#define S3HS_MASTER_CLOCK 48000.0f
     // Quantize frequency by period, simulating a pitch inaccuracy like NES, PSG...
     float quantizeFreqByPeriod(float freq) {
-        const float masterClock = S3HS_MASTER_CLOCK;   
-        int calculatedPeriod = std::floor(masterClock/freq);
-        float quantizedFreq = masterClock/(float)calculatedPeriod;
-        return quantizedFreq;
-        //return freq; // temporary disable
+        if (frequencyQuantizeFrequency > 0) {
+            const float masterClock = frequencyQuantizeFrequency;   
+            int calculatedPeriod = std::floor(masterClock/freq);
+            float quantizedFreq = masterClock/(float)calculatedPeriod;
+            return quantizedFreq;
+            //return freq; // temporary disable
+        } else {
+            return freq;
+        }
+    }
+
+    int getFrequencyQuantizeFrequency() const {
+        return frequencyQuantizeFrequency;
+    }
+
+    void setFrequencyQuantizeFrequency(int frequency) {
+        frequencyQuantizeFrequency = frequency;
     }
 
     #define OVERSAMPLE_MULT 1
-
 
     std::vector<std::vector<std::vector<float_t>>> AudioCallBack(int len)
     {

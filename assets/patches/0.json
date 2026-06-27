@@ -608,36 +608,80 @@
     },
     {
       "program": 14,
-      "modmode": 4,
+      "modmode": 6,
       "feedback": 128,
       "keyShift": 0,
       "operators": [
         {
-          "frequency": 0,
+          "waveform": 0,
+          "volume": 0,
           "attack": 0,
-          "decay": 64,
+          "decay": 0,
           "sustain": 0,
-          "release": 64,
-          "volume": 255,
-          "waveform": 0
+          "release": 0
         },
         {
-          "frequency": 24576,
-          "attack": 0,
-          "decay": 4,
-          "sustain": 64,
-          "release": 64,
-          "volume": 32,
-          "waveform": 15
-        },
-        {
-          "frequency": 0,
+          "waveform": 0,
+          "volume": 0,
           "attack": 0,
           "decay": 0,
           "sustain": 0,
           "release": 0,
+          "frequency": 0
+        },
+        {
+          "waveform": 0,
+          "volume": 255,
+          "attack": 0,
+          "decay": 128,
+          "sustain": 0,
+          "release": 128,
+          "frequency": 8192
+        },
+        {
+          "waveform": 0,
+          "volume": 32,
+          "attack": 0,
+          "decay": 128,
+          "sustain": 0,
+          "release": 128,
+          "frequency": 28672
+        },
+        {
+          "waveform": 0,
+          "volume": 255,
+          "attack": 0,
+          "decay": 128,
+          "sustain": 0,
+          "release": 128,
+          "frequency": 8208
+        },
+        {
+          "waveform": 0,
+          "volume": 32,
+          "attack": 0,
+          "decay": 128,
+          "sustain": 0,
+          "release": 128,
+          "frequency": 28800
+        },
+        {
+          "waveform": 0,
           "volume": 0,
-          "waveform": 0
+          "attack": 0,
+          "decay": 0,
+          "sustain": 0,
+          "release": 0,
+          "frequency": 0
+        },
+        {
+          "waveform": 0,
+          "volume": 0,
+          "attack": 0,
+          "decay": 0,
+          "sustain": 0,
+          "release": 0,
+          "frequency": 0
         }
       ]
     },
@@ -1789,6 +1833,50 @@
           "release": 1,
           "volume": 32,
           "waveform": 1
+        },
+        {
+          "frequency": 0,
+          "attack": 0,
+          "decay": 0,
+          "sustain": 0,
+          "release": 0,
+          "volume": 0,
+          "waveform": 0
+        }
+      ]
+    },
+    {
+      "program": 51,
+      "modmode": 4,
+      "feedback": 132,
+      "keyShift": 0,
+      "operators": [
+        {
+          "frequency": 0,
+          "attack": 1,
+          "decay": 0,
+          "sustain": 255,
+          "release": 16,
+          "volume": 255,
+          "waveform": 14
+        },
+        {
+          "frequency": 12288,
+          "attack": 4,
+          "decay": 11,
+          "sustain": 112,
+          "release": 16,
+          "volume": 27,
+          "waveform": 0
+        },
+        {
+          "frequency": 4114,
+          "attack": 1,
+          "decay": 64,
+          "sustain": 64,
+          "release": 4,
+          "volume": 16,
+          "waveform": 15
         },
         {
           "frequency": 0,
@@ -3113,26 +3201,80 @@
     {
       "program": 87,
       "modmode": 4,
-      "feedback": 132,
+      "feedback": 130,
       "keyShift": 0,
       "operators": [
         {
-          "frequency": 0,
-          "attack": 0,
-          "decay": 16,
-          "sustain": 128,
-          "release": 4,
+          "waveform": 14,
           "volume": 255,
-          "waveform": 0
+          "attack": 0,
+          "decay": 255,
+          "sustain": 0,
+          "release": 16,
+          "frequency": 0
         },
         {
-          "frequency": 4104,
+          "waveform": 0,
+          "volume": 22,
+          "attack": 2,
+          "decay": 11,
+          "sustain": 112,
+          "release": 16,
+          "frequency": 12288
+        },
+        {
+          "waveform": 0,
+          "volume": 0,
           "attack": 0,
-          "decay": 32,
+          "decay": 0,
           "sustain": 0,
-          "release": 4,
-          "volume": 32,
-          "waveform": 4
+          "release": 0,
+          "frequency": 0
+        },
+        {
+          "waveform": 0,
+          "volume": 0,
+          "attack": 0,
+          "decay": 0,
+          "sustain": 0,
+          "release": 0,
+          "frequency": 0
+        },
+        {
+          "waveform": 0,
+          "volume": 0,
+          "attack": 0,
+          "decay": 0,
+          "sustain": 0,
+          "release": 0,
+          "frequency": 0
+        },
+        {
+          "waveform": 0,
+          "volume": 0,
+          "attack": 0,
+          "decay": 0,
+          "sustain": 0,
+          "release": 0,
+          "frequency": 0
+        },
+        {
+          "waveform": 255,
+          "volume": 0,
+          "attack": 0,
+          "decay": 0,
+          "sustain": 0,
+          "release": 0,
+          "frequency": 0
+        },
+        {
+          "waveform": 1,
+          "volume": 0,
+          "attack": 0,
+          "decay": 0,
+          "sustain": 0,
+          "release": 0,
+          "frequency": 0
         }
       ]
     },
@@ -4777,50 +4919,6 @@
           "release": 0,
           "volume": 0,
           "waveform": 0
-        },
-        {
-          "frequency": 0,
-          "attack": 0,
-          "decay": 0,
-          "sustain": 0,
-          "release": 0,
-          "volume": 0,
-          "waveform": 0
-        }
-      ]
-    },
-    {
-      "program": 51,
-      "modmode": 4,
-      "feedback": 132,
-      "keyShift": 0,
-      "operators": [
-        {
-          "frequency": 0,
-          "attack": 1,
-          "decay": 0,
-          "sustain": 255,
-          "release": 16,
-          "volume": 255,
-          "waveform": 14
-        },
-        {
-          "frequency": 12288,
-          "attack": 4,
-          "decay": 11,
-          "sustain": 112,
-          "release": 16,
-          "volume": 27,
-          "waveform": 0
-        },
-        {
-          "frequency": 4114,
-          "attack": 1,
-          "decay": 64,
-          "sustain": 64,
-          "release": 4,
-          "volume": 16,
-          "waveform": 15
         },
         {
           "frequency": 0,
