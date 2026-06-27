@@ -325,7 +325,7 @@ Mutation DoMutation(const uint8_t ccValues[128]) {
     mut.releaseTime = ccValues[72] - 64.0f;
     mut.LPFCutoff = ccValues[74] - 64.0f;
     mut.LPFResonance = ccValues[71] - 64.0f;
-    mut.ModulatorFreqShift = ccValues[93];
+    mut.ModulatorFreqShift = ccValues[93] / 4.0f;
     return mut;
 }
 
