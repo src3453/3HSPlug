@@ -640,10 +640,10 @@
         },
         {
           "waveform": 0,
-          "volume": 32,
+          "volume": 20,
           "attack": 0,
           "decay": 128,
-          "sustain": 0,
+          "sustain": 128,
           "release": 128,
           "frequency": 28672
         },
@@ -658,10 +658,10 @@
         },
         {
           "waveform": 0,
-          "volume": 32,
+          "volume": 20,
           "attack": 0,
           "decay": 128,
-          "sustain": 0,
+          "sustain": 128,
           "release": 128,
           "frequency": 28800
         },
