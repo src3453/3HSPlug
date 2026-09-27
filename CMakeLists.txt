@@ -30,12 +30,14 @@ configure_file(src/config.h.in config.h @ONLY)
 juce_add_plugin(3HSPlug
 
     COMPANY_NAME "src3453 @ KiTsuNeKo Works"
-    COMPANY_COPYRIGHT "(C) 2025 src3453 at KiTsuNeKo Works licensed under GPLv3"
-    PLUGIN_MANUFACTURER_CODE KTNK
-    PLUGIN_CODE 3HSP
+    PLUGIN_MANUFACTURER_CODE Ktnk
+    PLUGIN_CODE 3Hsp
     BUNDLE_ID com.src3453.3hsplug
     VST3_CATEGORIES Instrument
-    FORMATS Standalone
+    FORMATS Standalone VST3 AU
+    IS_SYNTH TRUE
+    NEEDS_MIDI_INPUT TRUE
+    NEEDS_MIDI_OUTPUT FALSE
     PRODUCT_NAME "3HSPlug")
 
 juce_generate_juce_header(3HSPlug)
@@ -65,3 +67,4 @@ target_link_libraries(3HSPlug
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
