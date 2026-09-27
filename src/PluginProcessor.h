@@ -173,6 +173,9 @@ public:
     int64_t lastGSTextUpdateTick = std::numeric_limits<int64_t>::min(); // テキストディスプレイの最後の更新時刻（tick単位）
 
 private:
+    void processBlockSegment(juce::AudioBuffer<float>& buffer,
+                             juce::MidiBufferIterator midiBegin,
+                             juce::MidiBufferIterator midiEnd);
         //==============================================================================
     // S3HS音源エンジン
     std::vector<S3HS_sound> s3hsSounds;

@@ -376,9 +376,70 @@ std::array<std::array<bool, 16>, 16> updateGSDotMatrix(const uint8_t* dotData)
     return matrix; // ドットマトリクスの状態を返す（必要に応じてクラスメンバに保存するなどしても良い）
 }
 
+// VST3/AUのサンプル位置を保ち、イベント時刻ごとに音声を分割して処理する。
 void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedLock sl(processLock);
+
+    const int numSamples = buffer.getNumSamples();
+    if (numSamples <= 0)
+        return;
+
+    if (midiMessages.isEmpty()) {
+        processBlockSegment(buffer, midiMessages.begin(), midiMessages.end());
+        return;
+    }
+
+    for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+        (void) buffer.getWritePointer(channel);
+
+    const auto eventPosition = [numSamples](juce::MidiBufferIterator iterator) {
+        return juce::jlimit(0, numSamples - 1, (*iterator).samplePosition);
+    };
+
+    auto iterator = midiMessages.begin();
+    int segmentStart = 0;
+
+    while (segmentStart < numSamples) {
+        if (iterator == midiMessages.end()) {
+            juce::AudioBuffer<float> segmentBuffer(buffer.getArrayOfWritePointers(),
+                                                   buffer.getNumChannels(),
+                                                   segmentStart,
+                                                   numSamples - segmentStart);
+            processBlockSegment(segmentBuffer, iterator, iterator);
+            break;
+        }
+
+        const int nextEventPosition = eventPosition(iterator);
+        if (nextEventPosition > segmentStart) {
+            juce::AudioBuffer<float> segmentBuffer(buffer.getArrayOfWritePointers(),
+                                                   buffer.getNumChannels(),
+                                                   segmentStart,
+                                                   nextEventPosition - segmentStart);
+            processBlockSegment(segmentBuffer, iterator, iterator);
+            segmentStart = nextEventPosition;
+            continue;
+        }
+
+        const auto segmentMidiBegin = iterator;
+        do {
+            ++iterator;
+        } while (iterator != midiMessages.end() && eventPosition(iterator) == segmentStart);
+
+        const int segmentEnd = iterator == midiMessages.end() ? numSamples : eventPosition(iterator);
+        juce::AudioBuffer<float> segmentBuffer(buffer.getArrayOfWritePointers(),
+                                               buffer.getNumChannels(),
+                                               segmentStart,
+                                               segmentEnd - segmentStart);
+        processBlockSegment(segmentBuffer, segmentMidiBegin, iterator);
+        segmentStart = segmentEnd;
+    }
+}
+
+void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buffer,
+                                                juce::MidiBufferIterator midiBegin,
+                                                juce::MidiBufferIterator midiEnd)
+{
 
     // パフォーマンス測定開始
     auto processStartTime = std::chrono::high_resolution_clock::now();
@@ -397,8 +458,9 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
 
     // GMリセット検出（SysEx: F0 7E 7F 09 01 F7 またはCC#121=0）
     bool gmReset = false;
-    for (const auto metadata : midiMessages)
+    for (auto iterator = midiBegin; iterator != midiEnd; ++iterator)
     {
+        const auto metadata = *iterator;
         const auto msg = metadata.getMessage();
         // SysEx GM Reset
         // JUCEのgetSysExData()では、SysExの1バイト目(0xF0)と最後の1バイト(0xF7)は取り除かれる
@@ -657,8 +719,9 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     // 詳細なレジスタ割り当てはs3hs register map.md参照
 
     // MIDIノートON/OFFをGate/Freqに反映
-    for (const auto metadata : midiMessages)
+    for (auto iterator = midiBegin; iterator != midiEnd; ++iterator)
     {
+        const auto metadata = *iterator;
         const auto msg = metadata.getMessage();
         int ch = msg.getChannel();
         // CC#7: ボリューム, CC#11: エクスプレッション, CC#64: Sustain Pedal
