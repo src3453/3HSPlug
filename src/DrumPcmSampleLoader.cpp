@@ -2,7 +2,6 @@
 #include "DrumPcmSampleLoader.h"
 #include "DrumKeymapManager.h"
 #include <juce_audio_formats/juce_audio_formats.h>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <vector>
@@ -12,7 +11,6 @@
 extern uint8_t* g_pcmRam;
 extern size_t g_pcmRamSize;
 
-namespace fs = std::filesystem;
 
 DecodedWav DrumPcmSampleLoader::loadAndDecode(const std::string& filePath) {
     // JUCEのAudioFormatManagerを使ってWAV/AIFF/FLAC/MP3等を読み込む
@@ -70,21 +68,22 @@ bool DrumPcmSampleLoader::loadSampleToRam(const std::string& filePath, uint32_t 
 // 一括ロード: 指定ディレクトリ内の[ノート番号].wavを全てロードし、キーマップに登録
 void loadAllDrumSamples(DrumKeymapManager& keymap, uint32_t baseRamAddr, const std::string& pcmPath) {
     uint32_t ramPtr = baseRamAddr;
+    const juce::File sampleDirectory(pcmPath);
     printf("[DrumPcmSampleLoader] Loading drum samples from: %s\n", pcmPath.c_str());
     
     for (int note = 0; note < 128; ++note) {
-        std::string wavPath = pcmPath + std::to_string(note) + ".wav";
-        if (!fs::exists(wavPath)) {
+        const auto sampleFile = sampleDirectory.getChildFile(juce::String(note) + ".wav");
+        if (!sampleFile.existsAsFile()) {
             continue;
         }
 
         DrumPcmSampleLoader loader;
         uint32_t sampleRate = 44100;
         uint32_t pcmSize = 0;
-        if (loader.loadSampleToRam(wavPath, ramPtr, sampleRate, pcmSize)) {
+        if (loader.loadSampleToRam(sampleFile.getFullPathName().toStdString(), ramPtr, sampleRate, pcmSize)) {
             keymap.assignNoteToSample(10, note, ramPtr, sampleRate, pcmSize); // MIDI ch10
             ramPtr += pcmSize; // PCMデータ長分だけポインタを進める
-            printf("[DrumPcmSampleLoader] Loaded note %d from %s\n", note, wavPath.c_str());
+            printf("[DrumPcmSampleLoader] Loaded note %d from %s\n", note, sampleFile.getFullPathName().toRawUTF8());
         }
     }
     printf("[DrumPcmSampleLoader] Loaded all drum samples from %s, %d bytes used (%d bytes free, %f%%)\n", pcmPath.c_str(), ramPtr - baseRamAddr, g_pcmRamSize - (ramPtr - baseRamAddr), (ramPtr - baseRamAddr) * 100.0f / g_pcmRamSize);

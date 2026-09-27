@@ -17,6 +17,21 @@
 uint8_t* g_pcmRam = nullptr;
 size_t g_pcmRamSize = 0;
 
+namespace {
+std::string getAssetDirectoryPath(const char* environmentVariable, const std::string& fallbackPath)
+{
+    auto configuredPath = juce::SystemStats::getEnvironmentVariable(environmentVariable, {});
+    if (configuredPath.isEmpty())
+        configuredPath = fallbackPath;
+
+    auto directoryPath = juce::File(configuredPath).getFullPathName();
+    if (!directoryPath.endsWithChar(juce::File::getSeparatorChar()))
+        directoryPath += juce::File::getSeparatorChar();
+
+    return directoryPath.toStdString();
+}
+}
+
 #define DEFAULT_CHIP_COUNT 4
 
 #define clip(x, minVal, maxVal) (std::min(std::max((x), (minVal)), (maxVal)))
@@ -135,6 +150,8 @@ _3HSPlugAudioProcessor::_3HSPlugAudioProcessor()
         : parameters(*this, nullptr)
     #endif
     {
+        pcmPath = getAssetDirectoryPath("3HSPLUG_PCM_PATH", pcmPath);
+        patchJsonPath = getAssetDirectoryPath("3HSPLUG_PATCHES_PATH", patchJsonPath);
         // PCM RAM領域を1MB確保
         constexpr size_t PCM_RAM_SIZE = 0x400000; // 4MB (仕様通り)
         if (!g_pcmRam) {
@@ -165,14 +182,14 @@ _3HSPlugAudioProcessor::_3HSPlugAudioProcessor()
         // ドラムPCMチャンネル状態の初期化（各チップごと4チャンネル）
         drumPcmChannelStates.resize(numChips * 4);
         // ドラムPCMサンプルロード
-        loadAllDrumSamples(drumKeymapManager, 0);
+        loadAllDrumSamples(drumKeymapManager, 0, pcmPath);
         
         // 全チップにPCM RAMを転送
         for (int chip = 0; chip < numChips; ++chip) {
             transferPcmRamToS3HS(s3hsSounds[chip].ram);
             printf("[DrumPCM] PCM RAM transferred to chip %d\n", chip);
         }
-        initializePatchBanks(); // パッチバンク初期化
+        initializePatchBanks(patchJsonPath); // パッチバンク初期化
         resetGM(); // GMリセット
         
 }
@@ -1446,11 +1463,6 @@ void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juc
     if (right && dcHighPassFilters.size() >= 2) {
         dcHighPassFilters[1].processSamples(right, buffer.getNumSamples());
     }
-    // This is here to avoid people getting screaming feedback
-    // when they first compile a plugin, but obviously you don't need to keep
-    // this code if your algorithm always overwrites all the output channels.
-    for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
-        buffer.clear (i, 0, buffer.getNumSamples());
 
     // This is the place where you'd normally do the guts of your plugin's
     // audio processing...

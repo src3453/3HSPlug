@@ -122,7 +122,7 @@ public:
 
     uint64_t getCurrentTick() const;
     
-    // パス設定関数
+    // アセットディレクトリの設定・取得
     void setPcmPath(const std::string& path) { pcmPath = path; }
     void setPatchJsonPath(const std::string& path) { patchJsonPath = path; }
     std::string getPcmPath() const { return pcmPath; }
@@ -178,9 +178,9 @@ private:
     std::vector<S3HS_sound> s3hsSounds;
     int numChips = 1;
     
-    // パス設定
+    // PCMサンプルとパッチバンクJSONのディレクトリ
     std::string pcmPath = "./pcm/";
-    std::string patchJsonPath = "patch_bank.json";
+    std::string patchJsonPath = "patches/";
 
     // パラメータ管理（最小限：音色/ボリューム/ADSR/ゲート）
     juce::AudioProcessorValueTreeState parameters;
