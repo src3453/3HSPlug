@@ -87,7 +87,11 @@ private:
     // GUI Components
     juce::TextButton panicButton;
     juce::TextButton gmResetButton;
-    
+    juce::TextButton settingsButton;
+
+    void showAssetSettingsMenu();
+    void chooseAssetDirectory(bool choosePcmDirectory);
+    std::unique_ptr<juce::FileChooser> assetDirectoryChooser;
     juce::Label numChipsLabel;
     juce::ComboBox numChipsComboBox;
     

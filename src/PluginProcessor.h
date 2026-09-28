@@ -123,10 +123,10 @@ public:
     uint64_t getCurrentTick() const;
     
     // アセットディレクトリの設定・取得
-    void setPcmPath(const std::string& path) { pcmPath = path; }
-    void setPatchJsonPath(const std::string& path) { patchJsonPath = path; }
-    std::string getPcmPath() const { return pcmPath; }
-    std::string getPatchJsonPath() const { return patchJsonPath; }
+    void setPcmPath(const std::string& path);
+    void setPatchJsonPath(const std::string& path);
+    std::string getPcmPath() const;
+    std::string getPatchJsonPath() const;
 
     // パフォーマンス測定
     double getAudioProcessingTimeMs() const { return audioProcessingTimeMs; }
