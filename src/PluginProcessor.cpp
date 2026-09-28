@@ -30,6 +30,18 @@ std::string getAssetDirectoryPath(const char* environmentVariable, const std::st
 
     return directoryPath.toStdString();
 }
+
+std::string normalizeAssetDirectoryPath(const std::string& path)
+{
+    if (path.empty())
+        return {};
+
+    auto directoryPath = juce::File(path).getFullPathName();
+    if (!directoryPath.endsWithChar(juce::File::getSeparatorChar()))
+        directoryPath += juce::File::getSeparatorChar();
+
+    return directoryPath.toStdString();
+}
 }
 
 #define DEFAULT_CHIP_COUNT 4
@@ -1640,17 +1652,68 @@ juce::AudioProcessorEditor* _3HSPlugAudioProcessor::createEditor()
 //==============================================================================
 void _3HSPlugAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    // You should use this method to store your parameters in the memory block.
-    // You could do that either as raw data, or use the XML or ValueTree classes
-    // as intermediaries to make it easy to save and load complex data.
+    juce::XmlElement state("3HSPlugState");
+    state.setAttribute("pcmPath", juce::String(getPcmPath()));
+    state.setAttribute("patchJsonPath", juce::String(getPatchJsonPath()));
+    copyXmlToBinary(state, destData);
 }
 
 void _3HSPlugAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    // You should use this method to restore your parameters from this memory block,
-    // whose contents will have been created by the getStateInformation() call.
+    std::unique_ptr<juce::XmlElement> state(getXmlFromBinary(data, sizeInBytes));
+    if (state == nullptr || !state->hasTagName("3HSPlugState"))
+        return;
+
+    if (state->hasAttribute("pcmPath"))
+        setPcmPath(state->getStringAttribute("pcmPath").toStdString());
+    if (state->hasAttribute("patchJsonPath"))
+        setPatchJsonPath(state->getStringAttribute("patchJsonPath").toStdString());
 }
 
+void _3HSPlugAudioProcessor::setPcmPath(const std::string& path)
+{
+    const auto normalizedPath = normalizeAssetDirectoryPath(path);
+    if (normalizedPath.empty())
+        return;
+
+    juce::ScopedLock sl(processLock);
+    if (pcmPath == normalizedPath)
+        return;
+
+    pcmPath = normalizedPath;
+    if (g_pcmRam != nullptr)
+        std::fill(g_pcmRam, g_pcmRam + g_pcmRamSize, 0);
+    drumKeymapManager = DrumKeymapManager{};
+    loadAllDrumSamples(drumKeymapManager, 0, pcmPath);
+    for (auto& sound : s3hsSounds)
+        transferPcmRamToS3HS(sound.ram);
+}
+
+void _3HSPlugAudioProcessor::setPatchJsonPath(const std::string& path)
+{
+    const auto normalizedPath = normalizeAssetDirectoryPath(path);
+    if (normalizedPath.empty())
+        return;
+
+    juce::ScopedLock sl(processLock);
+    if (patchJsonPath == normalizedPath)
+        return;
+
+    patchJsonPath = normalizedPath;
+    initializePatchBanks(patchJsonPath);
+}
+
+std::string _3HSPlugAudioProcessor::getPcmPath() const
+{
+    juce::ScopedLock sl(processLock);
+    return pcmPath;
+}
+
+std::string _3HSPlugAudioProcessor::getPatchJsonPath() const
+{
+    juce::ScopedLock sl(processLock);
+    return patchJsonPath;
+}
 uint64_t _3HSPlugAudioProcessor::getCurrentTick() const
 {
     return currentTick;

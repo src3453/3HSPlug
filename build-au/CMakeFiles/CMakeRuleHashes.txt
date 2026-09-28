@@ -1,0 +1,5 @@
+# Hashes of file build rules.
+2fa0b9355b5b6e9dbe69142350988d49 3HSPlug_artefacts/JuceLibraryCode/3HSPlug_AU/PkgInfo
+402775cade0142f8431ed0a56754bae2 3HSPlug_artefacts/JuceLibraryCode/3HSPlug_Standalone/PkgInfo
+72c4b5a9ed442f34a7e7ad30a2285709 3HSPlug_artefacts/JuceLibraryCode/3HSPlug_VST3/PkgInfo
+a8e261c3c538032e0d259348f7ac3c96 3HSPlug_artefacts/JuceLibraryCode/JuceHeader.h

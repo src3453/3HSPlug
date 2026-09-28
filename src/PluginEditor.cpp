@@ -168,6 +168,9 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor (_3HSPlugAudioProcess
     // Panic Button
     panicButton.setButtonText("Panic");
     panicButton.onClick = [this] { audioProcessor.allNotesOff(); };
+    settingsButton.setButtonText("Settings");
+    settingsButton.onClick = [this] { showAssetSettingsMenu(); };
+    addAndMakeVisible(settingsButton);
     addAndMakeVisible(panicButton);
     
     // GM Reset Button
@@ -240,6 +243,54 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor (_3HSPlugAudioProcess
     startTimerHz(60); // 60HzでtimerCallback()を呼ぶ
     // 時間経過による減衰計算
     currentDisplayTick = 0;
+}
+
+void _3HSPlugAudioProcessorEditor::showAssetSettingsMenu()
+{
+    juce::PopupMenu menu;
+    menu.addItem(1, "Choose PCM samples folder...");
+    menu.addItem(2, "Choose patch banks folder...");
+
+    juce::Component::SafePointer<_3HSPlugAudioProcessorEditor> safeThis(this);
+    menu.showMenuAsync(juce::PopupMenu::Options(), [safeThis](int result)
+    {
+        if (safeThis == nullptr)
+            return;
+
+        if (result == 1)
+            safeThis->chooseAssetDirectory(true);
+        else if (result == 2)
+            safeThis->chooseAssetDirectory(false);
+    });
+}
+
+void _3HSPlugAudioProcessorEditor::chooseAssetDirectory(bool choosePcmDirectory)
+{
+    const auto currentPath = choosePcmDirectory ? audioProcessor.getPcmPath() : audioProcessor.getPatchJsonPath();
+    assetDirectoryChooser = std::make_unique<juce::FileChooser>(
+        choosePcmDirectory ? "Choose PCM samples folder" : "Choose patch banks folder",
+        juce::File(currentPath), "");
+
+    juce::Component::SafePointer<_3HSPlugAudioProcessorEditor> safeThis(this);
+    assetDirectoryChooser->launchAsync(juce::FileBrowserComponent::openMode
+                                           | juce::FileBrowserComponent::canSelectDirectories,
+        [safeThis, choosePcmDirectory](const juce::FileChooser& chooser)
+        {
+            if (safeThis == nullptr)
+                return;
+
+            const auto selectedDirectory = chooser.getResult();
+            if (!selectedDirectory.isDirectory())
+                return;
+
+            if (choosePcmDirectory)
+                safeThis->audioProcessor.setPcmPath(selectedDirectory.getFullPathName().toStdString());
+            else
+                safeThis->audioProcessor.setPatchJsonPath(selectedDirectory.getFullPathName().toStdString());
+
+            safeThis->audioProcessor.updateHostDisplay(
+                juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged(true));
+        });
 }
 
 _3HSPlugAudioProcessorEditor::~_3HSPlugAudioProcessorEditor()
@@ -591,7 +642,7 @@ void _3HSPlugAudioProcessorEditor::resized()
     
     panicButton.setBounds(x, startY, 80, 24);
     gmResetButton.setBounds(x + 90, startY, 80, 24);
-    
+    settingsButton.setBounds(x + 180, startY, 90, 24);
     startY += 30;
     numChipsLabel.setBounds(x, startY, 80, 24);
     numChipsComboBox.setBounds(x + 80, startY, 60, 24);
