@@ -187,6 +187,7 @@ _3HSPlugAudioProcessor::_3HSPlugAudioProcessor()
         // 全チップにPCM RAMを転送
         for (int chip = 0; chip < numChips; ++chip) {
             transferPcmRamToS3HS(s3hsSounds[chip].ram);
+            s3hsSounds[chip].syncPcmMemory();
             printf("[DrumPCM] PCM RAM transferred to chip %d\n", chip);
         }
         initializePatchBanks(patchJsonPath); // パッチバンク初期化
@@ -1293,6 +1294,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                     // Patch.keyShiftはすでに上で取得済み
                     // volumeScalingMapに応じてuint8_t volでスケーリングされたレジスタ値を取得
                     auto regs = patch.toRegValues(vol);
+                    s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x4003C0 + vIdx, patch.fbDest);
                     int bank = (baseAddr - 0x400000) / 0x40;
                     for (size_t i = 0; i < regs.size(); ++i) {
                         s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + static_cast<int>(i), regs[i]);
@@ -1896,6 +1898,7 @@ void _3HSPlugAudioProcessor::setNumChips(int n)
             s3hsSounds[chip].initSound();
             s3hsSounds[chip].setSampleRate(static_cast<float>(getSampleRate()));
             transferPcmRamToS3HS(s3hsSounds[chip].ram);
+            s3hsSounds[chip].syncPcmMemory();
         }
         
         // 状態リセット

@@ -79,6 +79,14 @@ python patch_editor.py
 - Python 3.6以上
 - tkinter（標準ライブラリ）
 
+## Furnace FUIの読み込み
+
+「Import from .fui file...」でS3HS楽器（FINS、type 68）を読み込みます。
+64バイトの`3H`設定と、フィードバック先`fbDest`を含む65バイトの設定に対応します。
+`fbDest`は読み込み後のJSONにも保持します。
+FUIにはMIDIプログラム番号がないため、読み込み時に割り当てます。
+遺伝的パッチ探索の`best_patch.fui`もこの操作で読み込めます。
+
 ## JSONファイル形式
 
 このエディターは以下の形式のJSONファイルに対応しています：
