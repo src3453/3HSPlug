@@ -32,6 +32,7 @@ void initializePatchBanks(const std::string& patchesDir) {
     defaultPatch.defined = false; // デフォルトは未定義扱い
     defaultPatch.modmode = 4;
     defaultPatch.feedback = 0x80;
+    defaultPatch.fbDest = 0;
     defaultPatch.keyShift = 0;
     // frequency, attack, decay, sustain, release, volume, waveform
     defaultPatch.operators[0] = { 0,      0, 64,  1,  1, 255, 3 };
@@ -127,7 +128,7 @@ void setPatchOverride(int bankNumber, int patchNumber, int relativeAddr, int val
         patchNumber >= 0 && patchNumber < PATCH_BANK_SIZE) {
         Patch& patch = PatchBanks[bankNumber][patchNumber];
         // オーバーライド処理
-        if (relativeAddr >= 0 && relativeAddr < 0x41) {
+        if (relativeAddr >= 0 && relativeAddr < 0x42) {
             if (relativeAddr >= 0x02 && relativeAddr <= 0x0F)
             {
                 if ((relativeAddr & 1) == 0) {
@@ -174,6 +175,9 @@ void setPatchOverride(int bankNumber, int patchNumber, int relativeAddr, int val
                 default:
                     break;
                 }
+            }
+            if (relativeAddr == 0x41) {
+                patch.fbDest = static_cast<uint8_t>(std::clamp(value, 0, 7));
             }
             if (relativeAddr == 0x40) {
                 patch.keyShift = static_cast<int8_t>(value); // キーシフトはint8_tなのでキャスト
@@ -298,6 +302,7 @@ bool loadPatchBankFromJSON(const std::string& filePath, int bankNumber) {
             patch.defined = true;
             patch.modmode = static_cast<uint8_t>(static_cast<int>(patchData.getProperty("modmode", 4)));
             patch.feedback = static_cast<uint8_t>(static_cast<int>(patchData.getProperty("feedback", 0x80)));
+            patch.fbDest = static_cast<uint8_t>(std::clamp(static_cast<int>(patchData.getProperty("fbDest", 0)), 0, 7));
             patch.keyShift = static_cast<int8_t>(static_cast<int>(patchData.getProperty("keyShift", 0)));
             
             // オペレーターデータ
@@ -352,6 +357,7 @@ bool savePatchBankToJSON(const std::string& filePath, int bankNumber) {
             json << "      \"program\": " << i << ",\n";
             json << "      \"modmode\": " << static_cast<int>(patch.modmode) << ",\n";
             json << "      \"feedback\": " << static_cast<int>(patch.feedback) << ",\n";
+            json << "      \"fbDest\": " << static_cast<int>(patch.fbDest) << ",\n";
             json << "      \"keyShift\": " << static_cast<int>(patch.keyShift) << ",\n";
             json << "      \"operators\": [\n";
             

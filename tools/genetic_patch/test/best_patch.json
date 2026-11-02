@@ -1,0 +1,85 @@
+{
+  "patches": [
+    {
+      "program": 0,
+      "modmode": 2,
+      "feedback": 152,
+      "fbDest": 3,
+      "keyShift": 0,
+      "operators": [
+        {
+          "frequency": 0,
+          "attack": 41,
+          "decay": 157,
+          "sustain": 36,
+          "release": 44,
+          "volume": 255,
+          "waveform": 0
+        },
+        {
+          "frequency": 7947,
+          "attack": 3,
+          "decay": 110,
+          "sustain": 191,
+          "release": 0,
+          "volume": 36,
+          "waveform": 0
+        },
+        {
+          "frequency": 20480,
+          "attack": 0,
+          "decay": 3,
+          "sustain": 14,
+          "release": 64,
+          "volume": 205,
+          "waveform": 0
+        },
+        {
+          "frequency": 8962,
+          "attack": 0,
+          "decay": 18,
+          "sustain": 255,
+          "release": 126,
+          "volume": 100,
+          "waveform": 0
+        },
+        {
+          "frequency": 12056,
+          "attack": 0,
+          "decay": 29,
+          "sustain": 0,
+          "release": 0,
+          "volume": 132,
+          "waveform": 0
+        },
+        {
+          "frequency": 8192,
+          "attack": 0,
+          "decay": 50,
+          "sustain": 5,
+          "release": 67,
+          "volume": 126,
+          "waveform": 0
+        },
+        {
+          "frequency": 12288,
+          "attack": 0,
+          "decay": 80,
+          "sustain": 41,
+          "release": 11,
+          "volume": 27,
+          "waveform": 0
+        },
+        {
+          "frequency": 4096,
+          "attack": 0,
+          "decay": 22,
+          "sustain": 15,
+          "release": 37,
+          "volume": 173,
+          "waveform": 0
+        }
+      ]
+    }
+  ]
+}

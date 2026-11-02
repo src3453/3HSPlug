@@ -50,7 +50,23 @@ target_sources(3HSPlug
         src/DrumKeymapManager.cpp
         src/DrumPcmSampleLoader.cpp
         src/CommandLineArgs.cpp
+        # integer 3HS core (vendored from CPT32, see src/s3hs_core/3hs/README.md)
+        src/s3hs_core/3hs/3hs816/src/channel.cpp
+        src/s3hs_core/3hs/3hs816/src/engine.cpp
+        src/s3hs_core/3hs/3hs816/src/envelope.cpp
+        src/s3hs_core/3hs/3hs816/src/registers.cpp
+        src/s3hs_core/3hs/3hs816/src/wavetables.cpp
+        src/s3hs_core/3hs/3hs88pwn4/src/biquad.cpp
+        src/s3hs_core/3hs/3hs88pwn4/src/engine.cpp
+        src/s3hs_core/3hs/3hs88pwn4/src/master_effects.cpp
+        src/s3hs_core/3hs/3hs88pwn4/src/pcm_channel.cpp
+        src/s3hs_core/3hs/3hs88pwn4/src/registers.cpp
     )
+
+target_include_directories(3HSPlug
+    PRIVATE
+        src/s3hs_core/3hs/3hs816/include
+        src/s3hs_core/3hs/3hs88pwn4/include)
 #        src/OscilloscopeComponent.cpp
 
 target_compile_definitions(3HSPlug

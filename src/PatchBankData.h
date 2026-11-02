@@ -37,6 +37,7 @@ struct Patch {
     bool defined = false; // パッチが定義されているか
     uint8_t modmode = 0; // モジュレーションモード
     uint8_t feedback = 128; // フィードバック (デフォルトは128)
+    uint8_t fbDest = 0; // フィードバック先 (0: OP1 ... 7: OP8)
     int8_t keyShift = 0; // キーシフト (デフォルトは0)
     std::array<Operator, 8> operators; // 各オペレーターのパラメータ
     std::array<uint8_t, 64> regValues{}; // 既存コード互換用
