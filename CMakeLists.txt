@@ -42,6 +42,12 @@ juce_add_plugin(3HSPlug
 
 juce_generate_juce_header(3HSPlug)
 
+# UIで選べる同梱フォント（どちらも作者の自作フォント）
+juce_add_binary_data(3HSPlugUiFonts
+    HEADER_NAME UiFontsData.h
+    NAMESPACE UiFontsData
+    SOURCES assets/fonts/azurzulu.ttf assets/fonts/f68.ttf)
+
 target_sources(3HSPlug
     PRIVATE
         src/PluginEditor.cpp
@@ -49,6 +55,8 @@ target_sources(3HSPlug
         src/ui/PatchEditorPanel.cpp
         src/ui/DrumKitPanel.cpp
         src/ui/AlgorithmDiagram.cpp
+        src/ui/Fonts.cpp
+        src/ui/Themes.cpp
         src/PluginProcessor.cpp
         src/PatchBankData.cpp
         src/DrumKeymapManager.cpp
@@ -82,6 +90,7 @@ target_compile_definitions(3HSPlug
 
 target_link_libraries(3HSPlug
     PRIVATE
+        3HSPlugUiFonts
         juce::juce_audio_utils
     PUBLIC
         juce::juce_audio_plugin_client

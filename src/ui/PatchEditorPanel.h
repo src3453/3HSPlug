@@ -34,10 +34,12 @@ public:
     void setOperator(const Operator& op);
     void writeTo(Operator& op) const;
     void setRole(bool isCarrier, bool isFeedbackTarget);
+    void lookAndFeelChanged() override { applyRoleColours(); }
 
     std::function<void()> onEdit;
 
 private:
+    void applyRoleColours();
     void drawWave(juce::Graphics&, juce::Rectangle<float>) const;
     void drawEnvelope(juce::Graphics&, juce::Rectangle<float>) const;
     juce::Rectangle<int> graphArea() const;
@@ -63,6 +65,7 @@ public:
     void refresh(); // タイマーから呼ぶ。プロセッサー側の変更を読み込む。
 
     std::function<void(int midiChannel)> onChannelChanged;
+    void lookAndFeelChanged() override { updateStatus(); }
 
 private:
     void loadFromProcessor();

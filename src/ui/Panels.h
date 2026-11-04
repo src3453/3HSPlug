@@ -120,6 +120,14 @@ private:
     juce::Slider pcBankSlider, pcProgramSlider;
     juce::TextButton gmResetButton { "GM Reset" };
     juce::TextButton panicButton { "All Notes Off" };
+    juce::Label fontLabel;
+    juce::ComboBox fontBox;
+    juce::Label themeLabel;
+    juce::ComboBox themeBox;
+    juce::TextButton themesFolderButton { "Themes folder..." };
+    juce::StringArray themeNames, themeErrors;
+    void reloadThemeList();
+    void lookAndFeelChanged() override;
     juce::TextButton pcmFolderButton { "PCM folder..." };
     juce::TextButton patchFolderButton { "Patch folder..." };
     std::unique_ptr<juce::FileChooser> folderChooser;

@@ -14,7 +14,7 @@
 //   ボイス状態（チップごとのFM/PCMの割り当て）
 //   マスター（音量フェーダーとステレオメーター）
 //   設定（オーバーレイ）
-class _3HSPlugAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer
+class _3HSPlugAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer, private juce::ChangeListener
 {
 public:
     explicit _3HSPlugAudioProcessorEditor(_3HSPlugAudioProcessor&);
@@ -25,6 +25,7 @@ public:
 
 private:
     void timerCallback() override;
+    void changeListenerCallback(juce::ChangeBroadcaster*) override; // テーマやフォントが変わった
     void selectChannel(int midiChannel);
 
     _3HSPlugAudioProcessor& audioProcessor;
