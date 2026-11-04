@@ -95,18 +95,41 @@ OperatorPanel::OperatorPanel(int i) : index(i)
     waveBox.onChange = [this] { repaint(); if (onEdit) onEdit(); };
     addAndMakeVisible(waveBox);
 
-    // 周波数比はQ12（4096 = 1.0倍）。OP1はノートの周波数で動くので比は使われない。
-    ratio.slider.setRange(0, 65535, 1);
-    ratio.slider.setMouseDragSensitivity(1200);
-    ratio.slider.setDoubleClickReturnValue(true, 4096);
-    ratio.slider.textFromValueFunction = [](double v) { return "x" + juce::String(v / 4096.0, 3); };
-    ratio.slider.valueFromTextFunction = [](const juce::String& text) {
-        return juce::jlimit(0.0, 65535.0, std::round(text.retainCharacters("0123456789.").getDoubleValue() * 4096.0));
+    // 周波数比はQ12（4096 = 1.0倍）。比 = Coarse × 4096 + Fine。
+    // Coarse は最も近い整数（0～16）、Fine はそこからのずれ（-2048～+2047 = -0.5～+0.5）。
+    // OP1はノートの周波数で動くので比は使われない。
+    coarse.slider.setRange(0, 16, 1);
+    coarse.slider.setMouseDragSensitivity(160);
+    coarse.slider.setDoubleClickReturnValue(true, 1);
+    coarse.slider.textFromValueFunction = [](double v) { return "x" + juce::String(juce::roundToInt(v)); };
+    coarse.slider.valueFromTextFunction = [](const juce::String& text) {
+        return juce::jlimit(0.0, 16.0, std::round(text.retainCharacters("0123456789.").getDoubleValue()));
     };
-    ratio.slider.setTooltip("Frequency ratio (Q12, 4096 = x1). Type a ratio such as 2.5. Shift-drag for fine steps.");
+    coarse.slider.setTooltip("Whole-number frequency ratio, x0 to x16");
+
+    fine.slider.setRange(-2048, 2047, 1);
+    fine.slider.setMouseDragSensitivity(1000);
+    fine.slider.setDoubleClickReturnValue(true, 0);
+    fine.slider.textFromValueFunction = [](double v) {
+        return juce::String::formatted("%+.4f", v / 4096.0);
+    };
+    fine.slider.valueFromTextFunction = [](const juce::String& text) {
+        // 小数で読む（"-0.25"、"+.125"）。小数点がなければ1/4096単位の値（"-512"）として読む。
+        const auto t = text.trim();
+        const bool negative = t.startsWithChar('-');
+        const auto digits = t.retainCharacters("0123456789.");
+        double v = digits.containsChar('.') ? digits.getDoubleValue() * 4096.0 : digits.getDoubleValue();
+        if (negative)
+            v = -v;
+        return juce::jlimit(-2048.0, 2047.0, std::round(v));
+    };
+    fine.slider.setTooltip("Offset from the Coarse ratio, -0.5 to +0.5 in 1/4096 steps (-2048 to +2047). "
+                           "Type -0.25 or -1024. Shift-drag for single steps.");
     if (index == 0) {
-        ratio.setEnabled(false);
-        ratio.slider.setTooltip("OP1 always runs at the note frequency");
+        for (auto* k : { &coarse, &fine }) {
+            k->setEnabled(false);
+            k->slider.setTooltip("OP1 always runs at the note frequency");
+        }
     }
 
     for (auto* k : { &level, &attack, &decay, &sustain, &release })
@@ -116,10 +139,13 @@ OperatorPanel::OperatorPanel(int i) : index(i)
     sustain.slider.setTooltip("Sustain level, 0-255");
     release.slider.setTooltip("0-255: 0 to 5.98 s, exponential");
 
-    for (auto* k : { &ratio, &level, &attack, &decay, &sustain, &release }) {
+    for (auto* k : { &coarse, &fine, &level, &attack, &decay, &sustain, &release }) {
         k->slider.onValueChange = [this] { repaint(graphArea()); if (onEdit) onEdit(); };
         addAndMakeVisible(*k);
     }
+    // 書式の関数を設定する前に作られた表示を更新する（値が0のままだと更新されない）
+    coarse.slider.updateText();
+    fine.slider.updateText();
 }
 
 void OperatorPanel::setOperator(const Operator& op)
@@ -128,7 +154,10 @@ void OperatorPanel::setOperator(const Operator& op)
         if (!k.slider.isMouseButtonDown())
             k.slider.setValue(v, juce::dontSendNotification);
     };
-    set(ratio, op.frequency);
+    // 最も近い整数倍とそこからのずれに分ける（Fine は -2048～+2047）
+    const int coarseValue = (static_cast<int>(op.frequency) + 2048) >> 12;
+    set(coarse, coarseValue);
+    set(fine, static_cast<int>(op.frequency) - coarseValue * 4096);
     set(level, op.volume);
     set(attack, op.attack);
     set(decay, op.decay);
@@ -141,7 +170,8 @@ void OperatorPanel::setOperator(const Operator& op)
 void OperatorPanel::writeTo(Operator& op) const
 {
     if (index != 0)
-        op.frequency = static_cast<uint16_t>(ratio.slider.getValue());
+        op.frequency = static_cast<uint16_t>(juce::jlimit(0, 65535, juce::roundToInt(coarse.slider.getValue()) * 4096
+                                                                         + juce::roundToInt(fine.slider.getValue())));
     op.volume = static_cast<uint8_t>(level.slider.getValue());
     op.attack = static_cast<uint8_t>(attack.slider.getValue());
     op.decay = static_cast<uint8_t>(decay.slider.getValue());
@@ -157,7 +187,7 @@ void OperatorPanel::setRole(bool isCarrier, bool isFeedbackTarget)
     carrier = isCarrier;
     feedbackTarget = isFeedbackTarget;
     const auto c = carrier ? colours::carrier : colours::modulator;
-    for (auto* k : { &ratio, &level, &attack, &decay, &sustain, &release })
+    for (auto* k : { &coarse, &fine, &level, &attack, &decay, &sustain, &release })
         k->slider.setColour(juce::Slider::rotarySliderFillColourId, c);
     repaint();
 }
@@ -283,11 +313,12 @@ void OperatorPanel::resized()
     const int rowH = area.getHeight() / 2;
     auto row1 = area.removeFromTop(rowH);
     auto row2 = area;
+    // 1段目: 周波数比（Coarse, Fine）と音量、2段目: エンベロープ
     const int w1 = row1.getWidth() / 3;
-    for (auto* k : { &ratio, &level, &attack })
+    for (auto* k : { &coarse, &fine, &level })
         k->setBounds(row1.removeFromLeft(w1).reduced(1));
-    const int w2 = row2.getWidth() / 3;
-    for (auto* k : { &decay, &sustain, &release })
+    const int w2 = row2.getWidth() / 4;
+    for (auto* k : { &attack, &decay, &sustain, &release })
         k->setBounds(row2.removeFromLeft(w2).reduced(1));
 }
 
@@ -328,6 +359,7 @@ PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p), dr
         return (n > 0 ? "+" : "") + juce::String(n);
     };
     keyShift.slider.onValueChange = [this] { pushEdit(); };
+    keyShift.slider.updateText();
     addAndMakeVisible(keyShift);
 
     revertButton.setTooltip("Revert this patch to the contents of the JSON file");
@@ -445,6 +477,12 @@ void PatchEditorPanel::pushEdit()
     for (size_t i = 0; i < operators.size(); ++i)
         operators[i]->writeTo(patch.operators[i]);
     processor.editChannelPatch(channel, patch);
+    {
+        // 範囲外を切り詰めた値（例: x16 + 正のFine）をノブに戻す。ドラッグ中のノブはそのまま。
+        const juce::ScopedValueSetter<bool> guard(loading, true);
+        for (size_t i = 0; i < operators.size(); ++i)
+            operators[i]->setOperator(patch.operators[i]);
+    }
     // 自分の編集は読み込み直さない（ドラッグ中の値を上書きしないため）
     loadedRevision = processor.getPatchRevision();
     updateStatus();
