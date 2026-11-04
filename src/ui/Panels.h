@@ -115,6 +115,8 @@ private:
     juce::TextButton closeButton { "Close" };
     juce::Label numChipsLabel;
     juce::ComboBox numChipsBox;
+    juce::Label allocationLabel;
+    juce::ComboBox allocationBox;
     juce::ToggleButton pcOverrideToggle { "Override Program Change" };
     juce::Label pcBankLabel, pcProgramLabel;
     juce::Slider pcBankSlider, pcProgramSlider;

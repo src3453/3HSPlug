@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <string>
 #include <vector>
 #include <memory>
@@ -11,7 +12,6 @@
 #include "PatchBankData.h"
 #include "s3hs_core/sound.cpp"
 
-#define USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY 1 // チャンネル割り当て戦略の切り替え（定義するとローリング戦略、未定義で従来の戦略）
 #define EMULATE_MSGS_RELEASE_BEHAVIOR 1 // MSGSのリリース挙動をエミュレートするか（定義するとMSGSのように同一ノートのすべてのスロットをオフにする、未定義で一般的なシンセのように最後に押されたノートだけオフにする）
 #define PROGRAM_CHANGE_ALSO_ALL_SOUNDS_OFF 1 // プログラムチェンジで全音オフするか（定義するとプログラムチェンジで全音オフ、未定義で全音オフしない）
 #define CUT_NOTE_IN_FIRST_TICK 0 // ノートオンの時に1tickのみ音を切り、それ以降は通常の音量で鳴らす（定義するとノートオンの最初のtickだけ音量0で鳴らす、未定義で通常通り鳴らす、SNESの音声ドライバの挙動を再現）
@@ -153,6 +153,11 @@ public:
     int getNumChips() const noexcept { return numChips; }
     void setNumChips(int n);
 
+    // ボイス割り当てストラテジー（設定画面で選択、状態に保存される）
+    enum class AllocationStrategy { Rolling = 0, LowestFree, LeastRecentlyUsed, Count };
+    int getAllocationStrategy() const noexcept { return allocationStrategy.load(); }
+    void setAllocationStrategy(int s);
+
     std::atomic<int> frequencyQuantizeFrequency{0}; // 周波数量子化の基準周波数（0の場合は量子化なし）
     void setFrequencyQuantizeFrequency(int frequency);
     int getFrequencyQuantizeFrequency();
@@ -283,6 +288,7 @@ private:
     // S3HS音源エンジン
     std::vector<S3HS_sound> s3hsSounds;
     int numChips = 1;
+    std::atomic<int> allocationStrategy { 0 }; // AllocationStrategy
     
     // PCMサンプルとパッチバンクJSONのディレクトリ
     std::string pcmPath = "./pcm/";
@@ -301,9 +307,7 @@ private:
     uint64_t currentTick = 0;
 
     // チャンネル割り当て用ローリングインデックス
-    #ifdef USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY
-    int currentRollingIndex = 0; // ローリングチャンネル割り当て戦略用インデックス
-    #endif
+    int currentRollingIndex = 0; // ローリング割り当て用インデックス
 
     // パッチバンク機能
     // std::vector<Patch> patchBank = std::vector<Patch>(128); // 外部定義に切り替え
