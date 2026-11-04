@@ -19,6 +19,8 @@ also checks JSON round trips and legacy patch fallback.
 The optional processor/editor test covers channel-isolated CC values, bank/program,
 pitch bend, melodic/drum notes, sustain, velocity-zero note off, CC120/123,
 Panic, GM reset and keyboard navigation between the channel monitor and editor.
+It also checks all UI scales (50–200%), logical layout, resize limits and reopening
+an editor at the selected scale, then restores the previous scale preference.
 
 ```powershell
 cmake -S . -B build -DTHREEHS_BUILD_UI_TESTS=ON

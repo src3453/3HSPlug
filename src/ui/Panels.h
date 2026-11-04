@@ -122,6 +122,8 @@ private:
     juce::TextButton panicButton { "All Notes Off" };
     juce::Label fontLabel;
     juce::ComboBox fontBox;
+    juce::Label scaleLabel;
+    juce::ComboBox scaleBox;
     juce::Label themeLabel;
     juce::ComboBox themeBox;
     juce::TextButton themesFolderButton { "Themes folder..." };

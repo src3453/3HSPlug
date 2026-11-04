@@ -1,4 +1,5 @@
 #include "PluginEditor.h"
+#include "ui/UIScale.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -10,6 +11,10 @@ void check(bool condition, const char* message)
 int main(int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI gui;
+    struct RestoreScale {
+        int percent = ui::currentUIScalePercent();
+        ~RestoreScale() { ui::setUIScalePercent(percent); ui::appearanceChanged().dispatchPendingMessages(); }
+    } restoreScale;
     try {
         _3HSPlugAudioProcessor processor;
         processor.setPlayConfigDetails(0, 2, 48000, 64);
@@ -57,7 +62,26 @@ int main(int argc, char** argv)
 
         _3HSPlugAudioProcessorEditor editor(processor);
         juce::TabbedComponent* tabs = nullptr;
-        for (auto* child : editor.getChildren())
+        auto* content = editor.findChildWithID("mainUI");
+        check(content != nullptr, "Scalable content");
+        const auto logicalSize = content->getLocalBounds();
+        for (int percent : ui::scalePercentages) {
+            ui::setUIScalePercent(percent);
+            ui::appearanceChanged().dispatchPendingMessages();
+            const float scale = percent / 100.0f;
+            check(std::abs(editor.getWidth() - juce::roundToInt(logicalSize.getWidth() * scale)) <= 1, "Scaled window width");
+            check(std::abs(content->getWidth() - logicalSize.getWidth()) <= 1, "Stable logical layout");
+            check(juce::approximatelyEqual(content->getTransform().getScaleFactor(), scale), "Content scale transform");
+            check(editor.getConstrainer()->getMinimumWidth() == juce::roundToInt(1000 * scale), "Scaled resize limits");
+        }
+        {
+            _3HSPlugAudioProcessorEditor reopened(processor);
+            auto* reopenedContent = reopened.findChildWithID("mainUI");
+            check(reopenedContent != nullptr && juce::approximatelyEqual(reopenedContent->getTransform().getScaleFactor(), 2.0f), "Scale on reopening");
+        }
+        ui::setUIScalePercent(100);
+        ui::appearanceChanged().dispatchPendingMessages();
+        for (auto* child : content->getChildren())
             if (auto* t = dynamic_cast<juce::TabbedComponent*>(child)) tabs = t;
         check(tabs != nullptr && tabs->getNumTabs() == 2, "Editor tabs");
         tabs->setCurrentTabIndex(1);

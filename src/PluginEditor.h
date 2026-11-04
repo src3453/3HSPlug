@@ -28,11 +28,13 @@ private:
     void timerCallback() override;
     void changeListenerCallback(juce::ChangeBroadcaster*) override; // テーマやフォントが変わった
     void selectChannel(int midiChannel);
+    void applyUIScale(float scale);
 
     _3HSPlugAudioProcessor& audioProcessor;
     ui::LookAndFeel lookAndFeel;
     juce::TooltipWindow tooltipWindow { this, 600 };
 
+    juce::Component content;
     ui::TitleBar titleBar;
     juce::Component synthPage;
     ui::ChannelStatusPanel channelStatus;
@@ -42,9 +44,10 @@ private:
     ui::VoiceStatusPanel voiceStatus;
     ui::MasterSection master;
     ui::SettingsOverlay settings;
-    ui::FocusRingOverlay focusRing { *this };
+    ui::FocusRingOverlay focusRing { content };
 
     int laidOutChips = 0;
+    float uiScale = 1.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(_3HSPlugAudioProcessorEditor)
 };
