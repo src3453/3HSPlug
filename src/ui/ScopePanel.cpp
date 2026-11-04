@@ -9,6 +9,7 @@ namespace {
 constexpr int headerHeight = 36;
 constexpr int fpsChoices[] { 10, 15, 20, 30, 60, 120 };
 constexpr const char* kFpsKey = "scopeFps";
+constexpr const char* kColourKey = "scopeColourMode"; // 1 = 白, 2 = ボイスごと, 3 = MIDIチャンネルごと
 constexpr const char* kDcKey = "scopeDcRemoval"; // 0 = なし, 1 = 平均値ベース
 
 // 1ピクセルを書く（範囲外は無視）。コンポーネントの背景は透明なので、不透明な色をそのまま書き込む。
@@ -85,6 +86,20 @@ ScopePanel::ScopePanel(_3HSPlugAudioProcessor& p) : processor(p)
     };
     setupLabel(fpsLabel, "FPS");
     setupLabel(dcLabel, "DC");
+    setupLabel(colourLabel, "Colour");
+
+    addAndMakeVisible(colourBox);
+    colourBox.addItem("White", 1);
+    colourBox.addItem("Per voice", 2);
+    colourBox.addItem("Per MIDI channel", 3);
+    colourMode = static_cast<ColourMode>(juce::jlimit(1, 3, ui::userSettings().getIntValue(kColourKey, 1)));
+    colourBox.setSelectedId(static_cast<int>(colourMode), juce::dontSendNotification);
+    colourBox.onChange = [this] {
+        colourMode = static_cast<ColourMode>(juce::jlimit(1, 3, colourBox.getSelectedId()));
+        ui::userSettings().setValue(kColourKey, static_cast<int>(colourMode));
+        ui::userSettings().saveIfNeeded();
+        repaint();
+    };
 
     addAndMakeVisible(fpsBox);
     const int savedFps = ui::userSettings().getIntValue(kFpsKey, 30);
@@ -146,11 +161,12 @@ void ScopePanel::resized()
 {
     auto area = getLocalBounds().reduced(space::sm);
     auto bar = area.removeFromTop(headerHeight - space::sm);
-    auto right = bar.removeFromRight(360);
+    auto right = bar.removeFromRight(620);
     auto place = [&right](juce::Label& l, juce::ComboBox& b, int boxW) {
         b.setBounds(right.removeFromRight(boxW).reduced(0, 2));
-        l.setBounds(right.removeFromRight(40));
+        l.setBounds(right.removeFromRight(juce::jmax(40, l.getFont().getStringWidth(l.getText()) + 8)));
     };
+    place(colourLabel, colourBox, 140);
     place(dcLabel, dcBox, 80);
     place(fpsLabel, fpsBox, 70);
     place(gainLabel, gainBox, 90);
@@ -170,7 +186,7 @@ juce::String ScopePanel::channelTitle(int flat) const
     return ch < 8 ? "FM " + juce::String(ch + 1) : "PCM " + juce::String(ch - 7);
 }
 
-juce::String ScopePanel::channelSubtitle(int flat) const
+int ScopePanel::midiChannelFor(int flat) const
 {
     const int chip = flat / pageSize, ch = flat % pageSize;
     int midiCh = 0;
@@ -182,7 +198,26 @@ juce::String ScopePanel::channelSubtitle(int flat) const
         const size_t idx = static_cast<size_t>(chip * 4 + (ch - 8));
         if (idx < processor.drumPcmChannelStates.size()) midiCh = processor.drumPcmChannelStates[idx].midiChannel;
     }
-    if (midiCh < 1 || midiCh > 16) return "--";
+    return midiCh >= 1 && midiCh <= 16 ? midiCh : 0;
+}
+
+juce::Colour ScopePanel::cellColour(int cellIndex) const
+{
+    switch (colourMode) {
+        case ColourMode::voice: return colours::forChannel(cellIndex % 16);
+        case ColourMode::midiChannel: {
+            const int midiCh = midiChannelFor(page * pageSize + cellIndex);
+            return midiCh > 0 ? colours::forChannel(midiCh - 1) : colours::textDim; // 未使用は灰色
+        }
+        case ColourMode::white: break;
+    }
+    return juce::Colours::white;
+}
+
+juce::String ScopePanel::channelSubtitle(int flat) const
+{
+    const int midiCh = midiChannelFor(flat);
+    if (midiCh == 0) return "--";
     const auto num = juce::String(midiCh).paddedLeft('0', 2);
     if (processor.isDrumChannel(midiCh)) return "CH" + num + " Drum kit";
     return "CH" + num + " " + juce::MidiMessage::getGMInstrumentName(processor.getCurrentProgramForChannel(midiCh));
@@ -260,8 +295,7 @@ void ScopePanel::renderWaveforms(juce::Rectangle<int> px, float scale)
             gain = 0.9f / cell.autoPeak;
         }
         const float amp = gain * ch * 0.45f;
-        const auto colour = colours::forChannel(i % 16);
-        canvas.px = juce::Colour(colour).getPixelARGB();
+        canvas.px = cellColours[static_cast<size_t>(i)].getPixelARGB();
 
         const float xScale = static_cast<float>(cw - 1) / static_cast<float>(cell.shownCount - 1);
         const int minY = y0, maxY = y0 + ch;
@@ -283,6 +317,8 @@ void ScopePanel::paint(juce::Graphics& g)
     g.setColour(juce::Colours::black);
     g.fillRect(grid);
 
+    for (int i = 0; i < pageSize; ++i) cellColours[static_cast<size_t>(i)] = cellColour(i);
+
     // 物理ピクセル解像度でラスタライズして、そのまま1回で転送する
     const float scale = juce::jmax(1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
     const int pw = juce::roundToInt(grid.getWidth() * scale), ph = juce::roundToInt(grid.getHeight() * scale);
@@ -303,7 +339,7 @@ void ScopePanel::paint(juce::Graphics& g)
     for (int i = 0; i < pageSize; ++i) {
         const int flat = page * pageSize + i;
         const juce::Rectangle<float> cell(grid.getX() + (i % columns) * cw, grid.getY() + (i / columns) * chh, cw, chh);
-        const auto colour = colours::forChannel(i % 16);
+        const auto colour = cellColours[static_cast<size_t>(i)];
         g.setColour(colour);
         g.setFont(monoFont(type::body));
         g.drawText(channelTitle(flat), cell.reduced(6, 3).removeFromTop(17), juce::Justification::topLeft, false);
