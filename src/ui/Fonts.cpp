@@ -21,7 +21,7 @@ juce::Typeface::Ptr load(const void* data, int size)
 FontChoice& choiceStorage()
 {
     static FontChoice choice = [] {
-        const auto id = settings().getValue(kSettingKey, kChoiceIds[0]);
+        const auto id = settings().getValue(kSettingKey, kChoiceIds[static_cast<int>(FontChoice::future6x8)]);
         for (int i = 0; i < 3; ++i)
             if (id == kChoiceIds[i])
                 return static_cast<FontChoice>(i);

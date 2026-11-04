@@ -45,11 +45,63 @@ std::string normalizeAssetDirectoryPath(const std::string& path)
 
 #define clip(x, minVal, maxVal) (std::min(std::max((x), (minVal)), (maxVal)))
 
+bool _3HSPlugAudioProcessor::readChannelStatus(std::array<ChannelStatus, 16>& destination) const
+{
+    const juce::ScopedTryLock lock(processLock);
+    if (!lock.isLocked())
+        return false;
+    for (size_t i = 0; i < destination.size(); ++i) {
+        auto& status = destination[i];
+        status.bank = currentBank[i];
+        status.bankLsb = channelCC[i + 1][32];
+        status.program = currentProgram[i];
+        status.pitchBend = channelPitchBend[i];
+        status.velocity = monitorVelocity[i];
+        status.drum = isDrumChannel(static_cast<int>(i) + 1);
+        std::copy(std::begin(channelCC[i + 1]), std::end(channelCC[i + 1]), status.controllers.begin());
+        status.notes = monitorNotes[i];
+    }
+    return true;
+}
+
+void _3HSPlugAudioProcessor::trackChannelMessage(const juce::MidiMessage& msg)
+{
+    const int ch = msg.getChannel() - 1;
+    if (ch < 0 || ch >= 16)
+        return;
+    auto& notes = monitorNotes[static_cast<size_t>(ch)];
+    auto& keys = monitorKeysDown[static_cast<size_t>(ch)];
+    if (msg.isNoteOn()) {
+        const auto note = static_cast<size_t>(msg.getNoteNumber());
+        keys[note] = true;
+        notes[note] = msg.getVelocity();
+        monitorVelocity[static_cast<size_t>(ch)] = msg.getVelocity();
+    } else if (msg.isNoteOff()) {
+        const auto note = static_cast<size_t>(msg.getNoteNumber());
+        keys[note] = false;
+        if (!channelSustainPedal[ch])
+            notes[note] = 0;
+    } else if (msg.isController()) {
+        const int cc = msg.getControllerNumber();
+        if (cc == 120 || cc == 123) {
+            notes = {};
+            keys = {};
+            monitorVelocity[static_cast<size_t>(ch)] = 0;
+        } else if (cc == 64 && msg.getControllerValue() < 64) {
+            for (size_t n = 0; n < notes.size(); ++n)
+                if (!keys[n]) notes[n] = 0;
+        }
+    }
+}
+
 
 //==============================================================================
 void _3HSPlugAudioProcessor::resetGM()
 {
     juce::ScopedLock sl(processLock);
+    monitorNotes = {};
+    monitorKeysDown = {};
+    monitorVelocity = {};
     printf("[GM] GM reset\n");
     // すべてのCCを0にリセット
     for (int ch = 0; ch <= 16; ++ch) {
@@ -739,6 +791,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
         const auto msg = metadata.getMessage();
         int ch = msg.getChannel();
         // CC#7: ボリューム, CC#11: エクスプレッション, CC#64: Sustain Pedal
+        trackChannelMessage(msg);
         if (msg.isController()) { // MIDI CCメッセージを解析し、必要に応じてレジスタを更新する
             this->channelCC[ch][msg.getControllerNumber()] = msg.getControllerValue();
             CCUpdated = true; // 更新フラグを立てる
@@ -2196,6 +2249,9 @@ std::pair<int, int> _3HSPlugAudioProcessor::getVoicePanValues(int voiceIndex) co
 void _3HSPlugAudioProcessor::allNotesOff()
 {
     juce::ScopedLock sl(processLock);
+    monitorNotes = {};
+    monitorKeysDown = {};
+    monitorVelocity = {};
     printf("[Panic] All Notes Off\n");
     
     // 全ボイスを停止

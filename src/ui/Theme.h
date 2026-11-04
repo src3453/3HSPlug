@@ -189,6 +189,56 @@ public:
         setColour(juce::AlertWindow::textColourId, colours::text);
         setColour(juce::AlertWindow::outlineColourId, colours::fieldEdge);
         setColour(juce::ToggleButton::textColourId, colours::text);
+        setColour(juce::TabbedComponent::backgroundColourId, colours::background);
+        setColour(juce::TabbedComponent::outlineColourId, colours::outline);
+        setColour(juce::TabbedButtonBar::tabOutlineColourId, colours::fieldEdge);
+        setColour(juce::TabbedButtonBar::tabTextColourId, colours::text);
+        setColour(juce::TabbedButtonBar::frontTextColourId, colours::accent);
+    }
+
+    int getTabButtonOverlap(int) override { return 0; }
+    int getTabButtonSpaceAroundImage() override { return 0; }
+
+    juce::Font getTabButtonFont(juce::TabBarButton&, float height) override
+    {
+        return font(juce::jmin(type::body, height * 0.55f), true);
+    }
+
+    int getTabButtonBestWidth(juce::TabBarButton& button, int depth) override
+    {
+        return juce::jmax(depth * 2, juce::GlyphArrangement::getStringWidthInt(
+            getTabButtonFont(button, static_cast<float>(depth)), button.getButtonText()) + space::lg * 2);
+    }
+
+    void drawTabbedButtonBarBackground(juce::TabbedButtonBar&, juce::Graphics& g) override
+    {
+        g.fillAll(colours::background);
+    }
+
+    void drawTabAreaBehindFrontButton(juce::TabbedButtonBar&, juce::Graphics&, int, int) override {}
+
+    void drawTabButton(juce::TabBarButton& button, juce::Graphics& g, bool highlighted, bool down) override
+    {
+        const auto bounds = button.getLocalBounds().toFloat().reduced(2.0f);
+        const bool selected = button.isFrontTab();
+        const bool outline = shape::button == shape::Button::outline;
+        const float alpha = button.isEnabled() ? 1.0f : 0.5f;
+        auto fill = selected ? colours::accent : colours::panelRaised;
+        if (outline)
+            fill = (selected ? colours::accent : colours::text).withAlpha(down ? 0.22f : 0.10f);
+        else if (down || highlighted)
+            fill = fill.brighter(down ? 0.2f : 0.08f);
+        if (!outline || selected || highlighted || down) {
+            g.setColour(fill.withMultipliedAlpha(alpha));
+            g.fillRoundedRectangle(bounds, shape::r(4.0f));
+        }
+        g.setColour((selected ? colours::accent : colours::fieldEdge).withMultipliedAlpha(alpha));
+        g.drawRoundedRectangle(bounds, shape::r(4.0f), selected ? 1.5f : 1.0f);
+        g.setColour((selected ? (outline ? colours::accent : colours::onAccent) : colours::text).withMultipliedAlpha(alpha));
+        g.setFont(getTabButtonFont(button, static_cast<float>(button.getHeight())));
+        g.drawFittedText(button.getButtonText(), bounds.toNearestInt().reduced(8, 2), juce::Justification::centred, 1);
+        if (button.hasKeyboardFocus(false))
+            drawFocusRing(g, bounds.reduced(2.0f));
     }
 
     void drawRotarySlider(juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
