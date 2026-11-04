@@ -13,9 +13,6 @@
 #include "PatchBankData.h"
 #include "DrumPcmSampleLoader.h"
 #include <algorithm> // for std::find
-// Drum PCM RAMグローバル実体
-uint8_t* g_pcmRam = nullptr;
-size_t g_pcmRamSize = 0;
 
 namespace {
 std::string getAssetDirectoryPath(const char* environmentVariable, const std::string& fallbackPath)
@@ -36,13 +33,6 @@ std::string getAssetDirectoryPath(const char* environmentVariable, const std::st
 
 #define clip(x, minVal, maxVal) (std::min(std::max((x), (minVal)), (maxVal)))
 
-// g_pcmRam → S3HS内蔵RAM転送
-void transferPcmRamToS3HS(std::vector<Byte>& s3hsRam) {
-    if (!g_pcmRam || g_pcmRamSize == 0) return;
-    std::vector<Byte> pcmVec(g_pcmRam, g_pcmRam + g_pcmRamSize);
-    ram_poke2array(s3hsRam, 0, pcmVec);
-    printf("[DrumPCM] g_pcmRam transferred to S3HS RAM (%zu bytes)\n", g_pcmRamSize);
-}
 
 //==============================================================================
 void _3HSPlugAudioProcessor::resetGM()
@@ -155,14 +145,6 @@ _3HSPlugAudioProcessor::_3HSPlugAudioProcessor()
         masterVolumeParam = parameters.getRawParameterValue(masterVolumeParamId);
         pcmPath = getAssetDirectoryPath("3HSPLUG_PCM_PATH", pcmPath);
         patchJsonPath = getAssetDirectoryPath("3HSPLUG_PATCHES_PATH", patchJsonPath);
-        // PCM RAM領域を1MB確保
-        constexpr size_t PCM_RAM_SIZE = 0x400000; // 4MB (仕様通り)
-        if (!g_pcmRam) {
-            g_pcmRam = new uint8_t[PCM_RAM_SIZE];
-            g_pcmRamSize = PCM_RAM_SIZE;
-            std::fill(g_pcmRam, g_pcmRam + g_pcmRamSize, 0);
-            printf("[DrumPCM] g_pcmRam allocated: %zu bytes\n", g_pcmRamSize);
-        }
 
 
         channelPitchBend.fill(0x0);
@@ -185,14 +167,13 @@ _3HSPlugAudioProcessor::_3HSPlugAudioProcessor()
         // ドラムPCMチャンネル状態の初期化（各チップごと4チャンネル）
         drumPcmChannelStates.resize(numChips * 4);
         // ドラムPCMサンプルロード
-        loadAllDrumSamples(drumKeymapManager, 0, pcmPath);
+        drumKit.loadDefaults(juce::File(pcmPath));
+        drumKit.applyToKeymap(drumKeymapManager);
         
         // 全チップにPCM RAMを転送
-        for (int chip = 0; chip < numChips; ++chip) {
-            transferPcmRamToS3HS(s3hsSounds[chip].ram);
-            s3hsSounds[chip].syncPcmMemory();
-            printf("[DrumPCM] PCM RAM transferred to chip %d\n", chip);
-        }
+        for (int chip = 0; chip < numChips; ++chip)
+            uploadDrumMemory(s3hsSounds[chip], DrumKit::kPcmMemorySize);
+        uploadedDrumBytes = drumKit.usedBytes();
         patchBanks.initialize(patchJsonPath); // パッチバンク初期化
         resetGM(); // GMリセット
         
@@ -390,6 +371,14 @@ std::array<std::array<bool, 16>, 16> updateGSDotMatrix(const uint8_t* dotData)
 void _3HSPlugAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedLock sl(processLock);
+
+    {
+        const juce::SpinLock::ScopedLockType ml(uiMidiLock);
+        if (!uiMidi.isEmpty()) {
+            midiMessages.addEvents(uiMidi, 0, -1, 0);
+            uiMidi.clear();
+        }
+    }
 
     const int numSamples = buffer.getNumSamples();
     if (numSamples <= 0)
@@ -1048,8 +1037,8 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                     // PCM RAMアドレス取得
                     uint32_t pcmAddr_Start = info.pcmIndex;
                     uint32_t pcmAddr_End = pcmAddr_Start + info.pcmLength;
-                    if (pcmAddr_End > g_pcmRamSize) {
-                        printf("[Warning::DrumPCM] Drum PCM Sample out of bounds: %d-%d (size: %zu)\n", pcmAddr_Start, pcmAddr_End, g_pcmRamSize);
+                    if (pcmAddr_End > DrumKit::kPcmMemorySize) {
+                        printf("[Warning::DrumPCM] Drum PCM Sample out of bounds: %d-%d (size: %u)\n", pcmAddr_Start, pcmAddr_End, DrumKit::kPcmMemorySize);
                     }
                     // 既存の同じMIDIチャンネル&ノート番号のドラムボイスを検索
                     int globalPcmChannel = -1;
@@ -1736,6 +1725,10 @@ void _3HSPlugAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     juce::ValueTree state("S3HSPlugState");
     state.setProperty("version", 1, nullptr);
     {
+        const juce::ScopedLock kl(kitLock);
+        state.appendChild(drumKit.toState(), nullptr);
+    }
+    {
         juce::ScopedLock sl(processLock);
         state.setProperty("numChips", numChips, nullptr);
         state.setProperty("pcOverride", pcOverrideEnabled, nullptr);
@@ -1770,6 +1763,11 @@ void _3HSPlugAudioProcessor::setStateInformation (const void* data, int sizeInBy
         parameters.replaceState(params);
 
     setNumChips(static_cast<int>(state.getProperty("numChips", numChips)));
+    if (auto kit = state.getChildWithName("DrumKit"); kit.isValid()) {
+        const juce::ScopedLock kl(kitLock);
+        drumKit.fromState(kit);
+        commitDrumKit();
+    }
     setPcOverrideBank(static_cast<int>(state.getProperty("pcOverrideBank", pcOverrideBank)));
     setPcOverrideProgram(static_cast<int>(state.getProperty("pcOverrideProgram", pcOverrideProgram)));
     setPcOverrideEnabled(static_cast<bool>(state.getProperty("pcOverride", pcOverrideEnabled)));
@@ -1916,6 +1914,110 @@ void _3HSPlugAudioProcessor::applyPatchToActiveVoices(int bankNumber, int progra
         }
         sound.ram_poke(sound.ram, 0x4003C0 + vIdx, patch.fbDest);
     }
+}
+
+//==============================================================================
+// ドラムキット
+void _3HSPlugAudioProcessor::uploadDrumMemory(S3HS_sound& sound, uint32_t bytes) const
+{
+    const auto& memory = drumKit.memory();
+    bytes = std::min<uint32_t>(bytes, static_cast<uint32_t>(std::min(memory.size(), sound.ram.size())));
+    std::copy(memory.begin(), memory.begin() + bytes, sound.ram.begin());
+    sound.syncPcmMemory(0, bytes);
+}
+
+void _3HSPlugAudioProcessor::silenceDrumVoices()
+{
+    for (int i = 0; i < static_cast<int>(drumPcmChannelStates.size()); ++i) {
+        const int chip = i / 4;
+        const int pcmChannel = i % 4;
+        if (chip >= static_cast<int>(s3hsSounds.size()))
+            break;
+        s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, 0x400200 + pcmChannel * 0x30 + 0x02, 0);
+        auto& d = drumPcmChannelStates[i];
+        d.inUse = false;
+        d.noteNumber = -1;
+        d.midiChannel = 0;
+        d.velocity = 0;
+        d.volume = 0;
+        d.lastUsedTick = currentTick;
+    }
+}
+
+void _3HSPlugAudioProcessor::commitDrumKit()
+{
+    juce::ScopedLock sl(processLock);
+    silenceDrumVoices(); // サンプルの配置が変わるので鳴っているドラムは止める
+    drumKit.applyToKeymap(drumKeymapManager);
+    const uint32_t bytes = std::max(uploadedDrumBytes, drumKit.usedBytes());
+    for (int chip = 0; chip < numChips; ++chip)
+        uploadDrumMemory(s3hsSounds[chip], bytes);
+    uploadedDrumBytes = drumKit.usedBytes();
+    ++drumKitRevision;
+}
+
+_3HSPlugAudioProcessor::DrumSlotView _3HSPlugAudioProcessor::getDrumSlot(int note) const
+{
+    const juce::ScopedLock kl(kitLock);
+    const auto& s = drumKit.slot(note);
+    DrumSlotView view;
+    view.file = s.file;
+    view.assigned = s.isAssigned();
+    view.missing = s.missing;
+    view.isDefault = drumKit.isDefaultAssignment(note);
+    view.error = s.error;
+    view.length = static_cast<uint32_t>(s.data.size());
+    view.sampleRate = s.sampleRate;
+    return view;
+}
+
+uint32_t _3HSPlugAudioProcessor::getDrumMemoryUsed() const
+{
+    const juce::ScopedLock kl(kitLock);
+    return drumKit.usedBytes();
+}
+
+juce::Result _3HSPlugAudioProcessor::assignDrumSample(int note, const juce::File& file)
+{
+    const juce::ScopedLock kl(kitLock);
+    auto result = drumKit.assign(note, file);
+    if (result.wasOk())
+        commitDrumKit();
+    return result;
+}
+
+void _3HSPlugAudioProcessor::clearDrumSample(int note)
+{
+    const juce::ScopedLock kl(kitLock);
+    drumKit.clear(note);
+    commitDrumKit();
+}
+
+void _3HSPlugAudioProcessor::resetDrumKit()
+{
+    const juce::ScopedLock kl(kitLock);
+    drumKit.resetToDefaults();
+    commitDrumKit();
+}
+
+juce::Result _3HSPlugAudioProcessor::loadDrumKitFile(const juce::File& file)
+{
+    const juce::ScopedLock kl(kitLock);
+    auto result = drumKit.loadKitFile(file);
+    commitDrumKit();
+    return result;
+}
+
+juce::Result _3HSPlugAudioProcessor::saveDrumKitFile(const juce::File& file) const
+{
+    const juce::ScopedLock kl(kitLock);
+    return drumKit.saveKitFile(file);
+}
+
+void _3HSPlugAudioProcessor::auditionDrum(int note, int velocity)
+{
+    const juce::SpinLock::ScopedLockType ml(uiMidiLock);
+    uiMidi.addEvent(juce::MidiMessage::noteOn(10, juce::jlimit(0, 127, note), static_cast<juce::uint8>(juce::jlimit(1, 127, velocity))), 0);
 }
 
 uint64_t _3HSPlugAudioProcessor::getCurrentTick() const
@@ -2129,6 +2231,7 @@ int _3HSPlugAudioProcessor::getPcOverrideProgram() const
 
 void _3HSPlugAudioProcessor::setNumChips(int n)
 {
+    const juce::ScopedLock kl(kitLock); // 新しいチップへPCMを転送するため
     juce::ScopedLock sl(processLock);
 
     if (n < 1) n = 1;
@@ -2162,8 +2265,7 @@ void _3HSPlugAudioProcessor::setNumChips(int n)
         for (int chip = 0; chip < numChips; ++chip) {
             s3hsSounds[chip].initSound();
             s3hsSounds[chip].setSampleRate(static_cast<float>(getSampleRate()));
-            transferPcmRamToS3HS(s3hsSounds[chip].ram);
-            s3hsSounds[chip].syncPcmMemory();
+            uploadDrumMemory(s3hsSounds[chip], DrumKit::kPcmMemorySize);
         }
         
         // 状態リセット

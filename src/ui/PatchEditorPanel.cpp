@@ -63,6 +63,8 @@ void setupByteKnob(Knob& knob)
 Knob::Knob(const juce::String& n) : name(n)
 {
     slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    slider.setWantsKeyboardFocus(true); // 矢印キーで1ずつ動かせる
+    slider.setTitle(n);
     slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 15);
     slider.setRotaryParameters(juce::degreesToRadians(225.0f), juce::degreesToRadians(495.0f), true);
     slider.setMouseDragSensitivity(220);
@@ -73,7 +75,7 @@ Knob::Knob(const juce::String& n) : name(n)
 void Knob::paint(juce::Graphics& g)
 {
     g.setColour(isEnabled() ? colours::textDim : colours::textDim.withAlpha(0.4f));
-    g.setFont(font(10.5f, true));
+    g.setFont(font(type::caption, true));
     g.drawText(name, getLocalBounds().removeFromTop(13), juce::Justification::centred);
 }
 
@@ -163,32 +165,25 @@ void OperatorPanel::setRole(bool isCarrier, bool isFeedbackTarget)
 juce::Rectangle<int> OperatorPanel::graphArea() const
 {
     // ノブ2段（1段62px）を優先し、残りが少なければ波形/エンベロープ表示を省く
-    const int spare = getHeight() - 30 - 2 * 62 - 12;
+    const int top = kHeaderTop + kHeaderHeight + space::xs;
+    const int spare = getHeight() - top - 2 * 62 - space::sm;
     const int h = spare < 24 ? 0 : juce::jmin(56, spare);
-    return getLocalBounds().reduced(8, 0).withTrimmedTop(30).withHeight(h);
+    return getLocalBounds().reduced(space::xs, 0).withTrimmedTop(top).withHeight(h);
 }
 
 void OperatorPanel::paint(juce::Graphics& g)
 {
-    auto bounds = getLocalBounds().toFloat();
     const auto roleColour = carrier ? colours::carrier : colours::modulator;
-    g.setColour(colours::panelRaised.withAlpha(0.6f));
-    g.fillRoundedRectangle(bounds, 5.0f);
-    g.setColour(roleColour.withAlpha(0.5f));
-    g.drawRoundedRectangle(bounds.reduced(0.5f), 5.0f, 1.0f);
-    g.setColour(roleColour);
-    g.fillRoundedRectangle(bounds.withHeight(3.0f).reduced(4.0f, 0.0f), 1.5f);
-
-    auto header = getLocalBounds().reduced(8, 0).withTrimmedTop(5).withHeight(22);
-    g.setColour(colours::text);
-    g.setFont(font(15.0f, true));
-    g.drawText("OP" + juce::String(index + 1), header.removeFromLeft(36), juce::Justification::centredLeft);
-    g.setColour(roleColour);
-    g.setFont(font(10.0f, true));
-    juce::String role = carrier ? "CARRIER" : "MOD";
+    auto header = getLocalBounds().reduced(space::xs, 0).withTrimmedTop(kHeaderTop).withHeight(kHeaderHeight);
+    g.setColour(isEnabled() ? roleColour : colours::textDim);
+    g.setFont(font(type::title, true));
+    g.drawText("OP" + juce::String(index + 1), header.removeFromLeft(40), juce::Justification::centredLeft);
+    g.setColour(colours::textDim);
+    g.setFont(font(type::caption));
+    juce::String role = carrier ? "Carrier" : "Mod";
     if (feedbackTarget)
-        role << "  FB";
-    g.drawText(role, header.removeFromLeft(70), juce::Justification::centredLeft);
+        role << " + FB";
+    g.drawText(role, header.removeFromLeft(64), juce::Justification::centredLeft);
 
     auto graph = graphArea().toFloat();
     if (graph.isEmpty())
@@ -272,7 +267,7 @@ void OperatorPanel::drawEnvelope(juce::Graphics& g, juce::Rectangle<float> r) co
     g.strokePath(path, juce::PathStrokeType(1.4f));
 
     g.setColour(colours::textDim);
-    g.setFont(font(9.0f));
+    g.setFont(font(type::caption));
     g.drawText("A " + formatSeconds(attackSeconds(a)) + "  D " + formatSeconds(decaySeconds(d))
                    + "  R " + formatSeconds(releaseSeconds(rl)),
                r.reduced(4.0f, 1.0f), juce::Justification::topRight, false);
@@ -280,11 +275,11 @@ void OperatorPanel::drawEnvelope(juce::Graphics& g, juce::Rectangle<float> r) co
 
 void OperatorPanel::resized()
 {
-    auto header = getLocalBounds().reduced(8, 0).withTrimmedTop(5).withHeight(22);
-    waveBox.setBounds(header.removeFromRight(juce::jmin(140, header.getWidth() - 100)));
+    auto header = getLocalBounds().reduced(space::xs, 0).withTrimmedTop(kHeaderTop).withHeight(kHeaderHeight);
+    waveBox.setBounds(header.removeFromRight(juce::jmin(132, header.getWidth() - 104)));
 
-    auto area = getLocalBounds().reduced(6, 4);
-    area.removeFromTop(juce::jmax(graphArea().getBottom(), 28) - area.getY() + 4);
+    auto area = getLocalBounds().withTrimmedBottom(space::xs);
+    area.removeFromTop(juce::jmax(graphArea().getBottom(), kHeaderTop + kHeaderHeight) + space::xs);
     const int rowH = area.getHeight() / 2;
     auto row1 = area.removeFromTop(rowH);
     auto row2 = area;
@@ -297,7 +292,7 @@ void OperatorPanel::resized()
 }
 
 //==============================================================================
-PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p)
+PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p), drumKit(p)
 {
     for (int ch = 1; ch <= 16; ++ch)
         channelBox.addItem("CH " + juce::String(ch), ch);
@@ -316,7 +311,7 @@ PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p)
     addAndMakeVisible(modeBox);
 
     for (int op = 0; op < 8; ++op)
-        fbDestBox.addItem("FB -> OP" + juce::String(op + 1), op + 1);
+        fbDestBox.addItem("Feedback to OP" + juce::String(op + 1), op + 1);
     fbDestBox.onChange = [this] { updateRoles(); pushEdit(); };
     fbDestBox.setTooltip("Feedback destination operator");
     addAndMakeVisible(fbDestBox);
@@ -337,9 +332,26 @@ PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p)
 
     revertButton.setTooltip("Revert this patch to the contents of the JSON file");
     revertButton.onClick = [this] {
-        processor.revertChannelPatch(channel);
-        loadedRevision = ~0u;
-        refresh();
+        const auto location = processor.getChannelPatchLocation(channel);
+        const auto name = juce::String(location.bank) + ":" + juce::String(location.program + 1).paddedLeft('0', 3);
+        const juce::Component::SafePointer<PatchEditorPanel> safe(this);
+        const int ch = channel;
+        juce::AlertWindow::showAsync(
+            juce::MessageBoxOptions()
+                .withIconType(juce::MessageBoxIconType::WarningIcon)
+                .withTitle("Revert patch " + name + "?")
+                .withMessage("Your edits to this patch are discarded and it goes back to the JSON file. "
+                             "Notes that are sounding change at once.")
+                .withButton("Revert")
+                .withButton("Cancel")
+                .withAssociatedComponent(this),
+            [safe, ch](int result) {
+                if (safe == nullptr || result != 1)
+                    return;
+                safe->processor.revertChannelPatch(ch);
+                safe->loadedRevision = ~0u;
+                safe->refresh();
+            });
     };
     addAndMakeVisible(revertButton);
 
@@ -351,24 +363,19 @@ PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p)
     };
     addAndMakeVisible(saveButton);
 
-    programLabel.setFont(font(16.0f, true));
+    programLabel.setFont(font(type::title, true));
     addAndMakeVisible(programLabel);
-    statusLabel.setFont(font(11.5f));
+    statusLabel.setFont(font(type::small));
     statusLabel.setColour(juce::Label::textColourId, colours::textDim);
     addAndMakeVisible(statusLabel);
 
-    drumNotice.setText("This channel plays drum PCM samples. Select another channel to edit an FM patch.",
-                       juce::dontSendNotification);
-    drumNotice.setJustificationType(juce::Justification::centred);
-    drumNotice.setFont(font(15.0f, true));
-    drumNotice.setColour(juce::Label::backgroundColourId, colours::panel.withAlpha(0.85f));
 
     for (int i = 0; i < 8; ++i) {
         operators[static_cast<size_t>(i)] = std::make_unique<OperatorPanel>(i);
         operators[static_cast<size_t>(i)]->onEdit = [this] { pushEdit(); };
         addAndMakeVisible(*operators[static_cast<size_t>(i)]);
     }
-    addChildComponent(drumNotice); // オペレーターの上に重ねる
+    addChildComponent(drumKit);
     refresh();
 }
 
@@ -398,6 +405,8 @@ void PatchEditorPanel::refresh()
     }
     if (saveMessageFrames > 0 && --saveMessageFrames == 0)
         updateStatus();
+    if (drumChannel)
+        drumKit.update();
 }
 
 void PatchEditorPanel::loadFromProcessor()
@@ -415,11 +424,13 @@ void PatchEditorPanel::loadFromProcessor()
         operators[i]->setOperator(patch.operators[i]);
     updateRoles();
 
-    for (auto* c : std::initializer_list<juce::Component*> { &modeBox, &fbDestBox, &feedback, &keyShift, &revertButton, &saveButton })
-        c->setEnabled(!drumChannel);
+    // ドラムチャンネルではFMの編集部分を隠し、ドラムキットの編集を出す
+    for (auto* c : std::initializer_list<juce::Component*> { &modeBox, &fbDestBox, &feedback, &keyShift, &revertButton, &saveButton, &statusLabel })
+        c->setVisible(!drumChannel);
     for (auto& op : operators)
-        op->setEnabled(!drumChannel);
-    drumNotice.setVisible(drumChannel);
+        op->setVisible(!drumChannel);
+    drumKit.setVisible(drumChannel);
+    repaint();
     updateStatus();
 }
 
@@ -451,7 +462,7 @@ void PatchEditorPanel::updateStatus()
 {
     const auto location = processor.getChannelPatchLocation(channel);
     const int prog = location.program;
-    programLabel.setText(drumChannel ? "Drum Kit"
+    programLabel.setText(drumChannel ? "Drum Kit  (shared by all drum channels)"
                                      : juce::String(location.bank).paddedLeft('0', 3) + ":"
                                            + juce::String(prog + 1).paddedLeft('0', 3) + "  "
                                            + (prog >= 0 && prog < 128 ? kGmNames[prog] : ""),
@@ -482,50 +493,65 @@ void PatchEditorPanel::updateStatus()
 
 juce::Rectangle<int> PatchEditorPanel::globalArea() const
 {
-    return getLocalBounds().withTrimmedTop(22).reduced(8, 2).removeFromTop(64);
+    return getLocalBounds().withTrimmedTop(space::sectionHeader).reduced(space::sm, 2).removeFromTop(kGlobalHeight);
 }
 
 juce::Rectangle<int> PatchEditorPanel::operatorsArea() const
 {
-    auto area = getLocalBounds().withTrimmedTop(22).reduced(8, 2);
-    area.removeFromTop(64 + 6);
-    return area.withTrimmedBottom(6);
+    auto area = getLocalBounds().withTrimmedTop(space::sectionHeader).reduced(space::sm, 2);
+    area.removeFromTop(kGlobalHeight + space::sm);
+    return area.withTrimmedBottom(space::sm);
 }
 
 void PatchEditorPanel::paint(juce::Graphics& g)
 {
-    drawSection(g, getLocalBounds(), "Patch Editor");
+    drawSection(g, getLocalBounds(), drumChannel ? "Drum kit" : "Patch editor");
+    if (drumChannel)
+        return;
+    // オペレーターは囲まず、ヘアラインで区切る
     g.setColour(colours::outline);
     const auto ops = operatorsArea();
-    g.drawHorizontalLine(ops.getY() - 4, static_cast<float>(ops.getX()), static_cast<float>(ops.getRight()));
+    g.drawHorizontalLine(ops.getY() - space::xs, static_cast<float>(ops.getX()), static_cast<float>(ops.getRight()));
+    const float colW = (ops.getWidth() + kOpGap) / 4.0f;
+    for (int c = 1; c < 4; ++c) {
+        const float x = ops.getX() + c * colW - kOpGap * 0.5f;
+        g.drawVerticalLine(juce::roundToInt(x), static_cast<float>(ops.getY()), static_cast<float>(ops.getBottom()));
+    }
+    const float midY = ops.getY() + ops.getHeight() * 0.5f;
+    g.drawHorizontalLine(juce::roundToInt(midY), static_cast<float>(ops.getX()), static_cast<float>(ops.getRight()));
 }
 
 void PatchEditorPanel::resized()
 {
+    drumKit.setBounds(getLocalBounds().withTrimmedTop(space::sectionHeader).reduced(space::sm, 2)
+                          .withTrimmedTop(space::control + space::sm).withTrimmedBottom(space::sm));
+
     auto global = globalArea();
-    auto left = global.removeFromLeft(juce::jmin(420, global.getWidth() / 2));
-    auto top = left.removeFromTop(30);
-    channelBox.setBounds(top.removeFromLeft(80).reduced(0, 3));
-    top.removeFromLeft(10);
+    auto left = global.removeFromLeft(juce::jmin(440, global.getWidth() / 2));
+    auto top = left.removeFromTop(space::control);
+    channelBox.setBounds(top.removeFromLeft(84));
+    top.removeFromLeft(space::md);
     programLabel.setBounds(top);
+    left.removeFromTop(space::xs);
     statusLabel.setBounds(left.removeFromTop(20));
 
-    auto buttons = global.removeFromRight(100);
-    revertButton.setBounds(buttons.removeFromTop(30).reduced(0, 3));
-    saveButton.setBounds(buttons.removeFromTop(30).reduced(0, 3));
-    global.removeFromRight(10);
+    auto buttons = global.removeFromRight(104);
+    revertButton.setBounds(buttons.removeFromTop(space::control));
+    buttons.removeFromTop(space::xs);
+    saveButton.setBounds(buttons.removeFromTop(space::control));
+    global.removeFromRight(space::md);
 
     keyShift.setBounds(global.removeFromRight(64));
     feedback.setBounds(global.removeFromRight(64));
-    global.removeFromRight(8);
-    auto combos = global.removeFromRight(juce::jmin(190, global.getWidth()));
-    modeBox.setBounds(combos.removeFromTop(30).reduced(0, 3));
-    fbDestBox.setBounds(combos.removeFromTop(30).reduced(0, 3));
+    global.removeFromRight(space::sm);
+    auto combos = global.removeFromRight(juce::jmin(200, global.getWidth()));
+    modeBox.setBounds(combos.removeFromTop(space::control));
+    combos.removeFromTop(space::xs);
+    fbDestBox.setBounds(combos.removeFromTop(space::control));
 
     auto ops = operatorsArea();
-    drumNotice.setBounds(ops);
     const int cols = 4;
-    const int gap = 6;
+    const int gap = kOpGap;
     const int w = (ops.getWidth() - gap * (cols - 1)) / cols;
     const int h = (ops.getHeight() - gap) / 2;
     for (int i = 0; i < 8; ++i) {

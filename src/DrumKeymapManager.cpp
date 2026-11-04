@@ -3,7 +3,6 @@
     
 void DrumKeymapManager::assignNoteToSample(uint8_t midiChannel, uint8_t noteNumber, int32_t pcmIndex, int32_t sampleRate, int32_t pcmLength) {
     keymapTable[midiChannel][noteNumber] = DrumSampleInfo{pcmIndex, sampleRate, pcmLength};
-    printf("[DrumKeymapManager] Assigned note %d on channel %d to PCM index 0x%X, sample rate %d, length %d\n", noteNumber, midiChannel, pcmIndex, sampleRate, pcmLength);
 }
 
 DrumSampleInfo DrumKeymapManager::getSampleInfo(uint8_t midiChannel, uint8_t noteNumber) const {

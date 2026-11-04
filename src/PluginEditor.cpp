@@ -14,7 +14,7 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor(_3HSPlugAudioProcesso
     setLookAndFeel(&lookAndFeel);
 
     titleBar.onPanic = [this] { audioProcessor.allNotesOff(); };
-    titleBar.onSettings = [this] { settings.open(); };
+    titleBar.onSettings = [this] { settings.open(); focusRing.toFront(false); };
     channelActivity.onChannelSelected = [this](int ch) { selectChannel(ch); };
     patchEditor.onChannelChanged = [this](int ch) { channelActivity.setSelectedChannel(ch); };
 
@@ -24,6 +24,7 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor(_3HSPlugAudioProcesso
     addAndMakeVisible(voiceStatus);
     addAndMakeVisible(master);
     addChildComponent(settings);
+    addAndMakeVisible(focusRing); // いちばん上（設定画面の上にも描く）
 
     laidOutChips = audioProcessor.getNumChips();
     setResizable(true, true);
@@ -52,17 +53,18 @@ void _3HSPlugAudioProcessorEditor::paint(juce::Graphics& g)
 void _3HSPlugAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds();
-    titleBar.setBounds(area.removeFromTop(48));
+    titleBar.setBounds(area.removeFromTop(52));
     settings.setBounds(getLocalBounds());
+    focusRing.setBounds(getLocalBounds());
 
-    area.reduce(8, 8);
-    master.setBounds(area.removeFromRight(100));
-    area.removeFromRight(8);
+    area.reduce(ui::space::sm, ui::space::sm);
+    master.setBounds(area.removeFromRight(104));
+    area.removeFromRight(ui::space::sm);
 
-    channelActivity.setBounds(area.removeFromTop(area.getHeight() < 760 ? 110 : 150));
-    area.removeFromTop(8);
+    channelActivity.setBounds(area.removeFromTop(area.getHeight() < 760 ? 112 : 152));
+    area.removeFromTop(ui::space::sm);
     voiceStatus.setBounds(area.removeFromBottom(voiceStatus.getPreferredHeight()));
-    area.removeFromBottom(8);
+    area.removeFromBottom(ui::space::sm);
     patchEditor.setBounds(area);
 }
 
@@ -77,4 +79,5 @@ void _3HSPlugAudioProcessorEditor::timerCallback()
     master.update();
     patchEditor.refresh();
     settings.update();
+    focusRing.refresh();
 }
