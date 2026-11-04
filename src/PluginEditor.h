@@ -6,6 +6,7 @@
 #include "ui/Panels.h"
 #include "ui/PatchEditorPanel.h"
 #include "ui/ChannelStatusPanel.h"
+#include "ui/ScopePanel.h"
 
 //==============================================================================
 // 区画:
@@ -38,6 +39,7 @@ private:
     ui::TitleBar titleBar;
     juce::Component synthPage;
     ui::ChannelStatusPanel channelStatus;
+    ui::ScopePanel scope;
     juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
     ui::ChannelActivityPanel channelActivity;
     ui::PatchEditorPanel patchEditor;

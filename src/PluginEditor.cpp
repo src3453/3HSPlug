@@ -7,6 +7,7 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor(_3HSPlugAudioProcesso
     : AudioProcessorEditor(&p),
       audioProcessor(p),
       channelStatus(p),
+      scope(p),
       channelActivity(p),
       patchEditor(p),
       voiceStatus(p),
@@ -41,6 +42,7 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor(_3HSPlugAudioProcesso
     tabs.setOutline(0);
     tabs.addTab("Synth", ui::colours::panel, &synthPage, false);
     tabs.addTab("Channels", ui::colours::panel, &channelStatus, false);
+    tabs.addTab("Scope", ui::colours::panel, &scope, false);
     content.addAndMakeVisible(tabs);
     content.addAndMakeVisible(master);
     content.addChildComponent(settings);
@@ -102,6 +104,8 @@ void _3HSPlugAudioProcessorEditor::changeListenerCallback(juce::ChangeBroadcaste
     // JUCE detaches the inactive tab page from the component tree.
     if (tabs.getCurrentTabIndex() != 0)
         ui::refreshFonts(synthPage);
+    if (tabs.getCurrentTabIndex() != 2)
+        ui::refreshFonts(scope);
     ui::refreshTheme(*this);
     for (int i = 0; i < tabs.getNumTabs(); ++i)
         tabs.setTabBackgroundColour(i, ui::colours::panel);
