@@ -14,22 +14,15 @@ PatchBankの初期化と、プログラム番号に該当しない場合のフ�
 パッチ番号はMIDIプログラム番号によって決定される。GM準拠。
 */
 
-std::vector<std::vector<Patch>> PatchBanks(MAX_BANKS, std::vector<Patch>(PATCH_BANK_SIZE));
-std::vector<std::vector<Patch>> PatchBanksOriginal(MAX_BANKS, std::vector<Patch>(PATCH_BANK_SIZE));
-std::vector<std::vector<Patch>> PatchBanksFile(MAX_BANKS, std::vector<Patch>(PATCH_BANK_SIZE));
+PatchBankSet::PatchBankSet()
+    : banks(MAX_BANKS, Bank(PATCH_BANK_SIZE)),
+      originalBanks(MAX_BANKS, Bank(PATCH_BANK_SIZE)),
+      fileBanks(MAX_BANKS, Bank(PATCH_BANK_SIZE)) {
+    initDefaultPatch();
+}
 
-Patch defaultPatch; // デフォルトパッチ
-
-void initializePatchBanks(const std::string& patchesDir) {
-    printf("[PatchBankData] Initializing patch banks from directory: %s\n", patchesDir.c_str());
-
-    // パッチ番号は実際のMIDIプログラム番号から1を引いた値, 1-128 -> 0-127
-
-
-    // 必要に応じて他のパッチも追加
-
-
-    // デフォルトパッチを初期化
+void PatchBankSet::initDefaultPatch() {
+    defaultPatch = Patch{};
     defaultPatch.defined = false; // デフォルトは未定義扱い
     defaultPatch.modmode = 4;
     defaultPatch.feedback = 0x80;
@@ -39,10 +32,23 @@ void initializePatchBanks(const std::string& patchesDir) {
     defaultPatch.operators[0] = { 0,      0, 64,  1,  1, 255, 3 };
     //defaultPatch.operators[1] = { 0x1000, 0,  0,255, 255,  17, 6 };
     //defaultPatch.operators[2] = { 0x0FF3, 0, 0, 255, 255, 16, 0 };
+}
+
+void PatchBankSet::initialize(const std::string& patchesDir) {
+    printf("[PatchBankData] Initializing patch banks from directory: %s\n", patchesDir.c_str());
+
+    // パッチ番号は実際のMIDIプログラム番号から1を引いた値, 1-128 -> 0-127
+
+
+    // 必要に応じて他のパッチも追加
+
+
+    // デフォルトパッチを初期化
+    initDefaultPatch();
 
     // すべてのバンクを初期化
     for (int bank = 0; bank < MAX_BANKS; ++bank) {
-        for (auto& patch : PatchBanks[bank]) {
+        for (auto& patch : banks[bank]) {
             patch.defined = false;
         }
     }
@@ -50,25 +56,25 @@ void initializePatchBanks(const std::string& patchesDir) {
     // パッチファイルをフォルダから読み込み
     for (int bank = 0; bank < MAX_BANKS; ++bank) {
         std::string bankFilePath = patchesDir + std::to_string(bank) + ".json";
-        loadPatchBankFromJSON(bankFilePath, bank);
+        loadFromJSON(bankFilePath, bank);
     }
     
-    PatchBanksOriginal = PatchBanks; // オリジナルのパッチバンクを保存
-    PatchBanksFile = PatchBanks;
+    originalBanks = banks; // オリジナルのパッチバンクを保存
+    fileBanks = banks;
 }
 
 // 一時的な関数: 現在のPatchBankの内容をJSONファイルに書き出す
-void exportCurrentPatchBankToJSON() {
+void PatchBankSet::exportCurrentToJSON() const {
     const std::string outputPath = "current_patch_bank.json";
-    if (savePatchBankToJSON(outputPath, 0)) {
+    if (saveBankToJSON(outputPath, 0)) {
         std::cout << "[PatchLoaderJSON] Current PatchBank exported to " << outputPath << std::endl;
     } else {
         std::cout << "[PatchLoaderJSON] Failed to export current PatchBank to " << outputPath << std::endl;
     }
 }
 
-void resetPatchBanks() {
-    PatchBanks = PatchBanksOriginal;
+void PatchBankSet::reset() {
+    banks = originalBanks;
 }
 
 bool patchesEqual(const Patch& a, const Patch& b) {
@@ -90,62 +96,73 @@ static bool validPatchIndex(int bankNumber, int programNumber) {
     return bankNumber >= 0 && bankNumber < MAX_BANKS && programNumber >= 0 && programNumber < PATCH_BANK_SIZE;
 }
 
-void setUserPatch(int bankNumber, int programNumber, const Patch& patch) {
+void PatchBankSet::setUserPatch(int bankNumber, int programNumber, const Patch& patch) {
     if (!validPatchIndex(bankNumber, programNumber)) return;
     Patch stored = patch;
     stored.defined = true;
     stored.fbDest = static_cast<uint8_t>(std::clamp(static_cast<int>(stored.fbDest), 0, 7));
     stored.modmode = static_cast<uint8_t>(std::clamp(static_cast<int>(stored.modmode), 0, 12));
     for (auto& op : stored.operators) op.waveform &= 0x0F;
-    PatchBanks[bankNumber][programNumber] = stored;
-    PatchBanksOriginal[bankNumber][programNumber] = stored;
+    banks[bankNumber][programNumber] = stored;
+    originalBanks[bankNumber][programNumber] = stored;
 }
 
-void revertUserPatch(int bankNumber, int programNumber) {
+void PatchBankSet::revertUserPatch(int bankNumber, int programNumber) {
     if (!validPatchIndex(bankNumber, programNumber)) return;
-    PatchBanks[bankNumber][programNumber] = PatchBanksFile[bankNumber][programNumber];
-    PatchBanksOriginal[bankNumber][programNumber] = PatchBanksFile[bankNumber][programNumber];
+    banks[bankNumber][programNumber] = fileBanks[bankNumber][programNumber];
+    originalBanks[bankNumber][programNumber] = fileBanks[bankNumber][programNumber];
 }
 
-bool isUserPatchModified(int bankNumber, int programNumber) {
+bool PatchBankSet::isUserPatchModified(int bankNumber, int programNumber) const {
     if (!validPatchIndex(bankNumber, programNumber)) return false;
-    return !patchesEqual(PatchBanksOriginal[bankNumber][programNumber], PatchBanksFile[bankNumber][programNumber]);
+    return !patchesEqual(originalBanks[bankNumber][programNumber], fileBanks[bankNumber][programNumber]);
 }
 
-bool saveUserPatchBank(const std::string& filePath, int bankNumber) {
+bool PatchBankSet::saveUserPatchBank(const std::string& filePath, int bankNumber) {
     if (bankNumber < 0 || bankNumber >= MAX_BANKS) return false;
-    if (!savePatchBankToJSON(filePath, PatchBanksOriginal[bankNumber])) return false;
-    PatchBanksFile[bankNumber] = PatchBanksOriginal[bankNumber];
+    if (!saveBankToJSON(filePath, originalBanks[bankNumber])) return false;
+    fileBanks[bankNumber] = originalBanks[bankNumber];
     return true;
 }
 
+void PatchBankSet::restoreFromFiles() {
+    originalBanks = fileBanks;
+    banks = fileBanks;
+}
+
+void PatchBankSet::clearUserPatch(int bankNumber, int programNumber) {
+    if (!validPatchIndex(bankNumber, programNumber)) return;
+    banks[bankNumber][programNumber].defined = false;
+    originalBanks[bankNumber][programNumber].defined = false;
+}
+
 // プログラム番号に該当しない場合は0番パッチを返す
-Patch& getPatchOrDefault(int bankNumber, int programNumber) {
+Patch& PatchBankSet::getPatchOrDefault(int bankNumber, int programNumber) {
     if (bankNumber >= 0 && bankNumber < MAX_BANKS &&
         programNumber >= 0 && programNumber < PATCH_BANK_SIZE &&
-        PatchBanks[bankNumber][programNumber].defined) {
-        return PatchBanks[bankNumber][programNumber];
+        banks[bankNumber][programNumber].defined) {
+        return banks[bankNumber][programNumber];
     }
     return defaultPatch;
 }
 
 // 代理発音機能：指定バンクにパッチがない場合はバンク0にフォールバック
-Patch& getEffectivePatch(int bankNumber, int programNumber) {
+const Patch& PatchBankSet::getEffectivePatch(int bankNumber, int programNumber) const {
     if (bankNumber >= 0 && bankNumber < MAX_BANKS &&
         programNumber >= 0 && programNumber < PATCH_BANK_SIZE) {
         
         // Temporary bypass !!!
-        //return PatchBanks[bankNumber][programNumber];
+        //return banks[bankNumber][programNumber];
 
         // 指定バンクにパッチが定義されている場合
-        if (PatchBanks[bankNumber][programNumber].defined) {
-            return PatchBanks[bankNumber][programNumber];
+        if (banks[bankNumber][programNumber].defined) {
+            return banks[bankNumber][programNumber];
         }
         
         // 指定バンクにパッチがない場合、バンク0（GM）にフォールバック
-        if (bankNumber != 0 && PatchBanks[0][programNumber].defined) {
+        if (bankNumber != 0 && banks[0][programNumber].defined) {
             //printf("[Warning::PatchBankData] No patch found for PC %d:%d, returning patch from bank 0\n", bankNumber, programNumber);
-            return PatchBanks[0][programNumber];
+            return banks[0][programNumber];
         }
     }
     
@@ -154,18 +171,22 @@ Patch& getEffectivePatch(int bankNumber, int programNumber) {
     return defaultPatch;
 }
 
+Patch& PatchBankSet::getEffectivePatch(int bankNumber, int programNumber) {
+    return const_cast<Patch&>(static_cast<const PatchBankSet&>(*this).getEffectivePatch(bankNumber, programNumber));
+}
+
 // パッチの存在状況を取得する関数 (GUI用)
-int getPatchAvailability(int bankNumber, int programNumber) {
+int PatchBankSet::getPatchAvailability(int bankNumber, int programNumber) const {
     if (bankNumber >= 0 && bankNumber < MAX_BANKS &&
         programNumber >= 0 && programNumber < PATCH_BANK_SIZE) {
         
         // 指定バンクにパッチが定義されている場合
-        if (PatchBanks[bankNumber][programNumber].defined) {
+        if (banks[bankNumber][programNumber].defined) {
             return 2; // 指定バンクに存在
         }
         
         // 指定バンクにパッチがない場合、バンク0（GM）にフォールバック
-        if (bankNumber != 0 && PatchBanks[0][programNumber].defined) {
+        if (bankNumber != 0 && banks[0][programNumber].defined) {
             return 1; // バンク0に存在
         }
     }
@@ -173,10 +194,10 @@ int getPatchAvailability(int bankNumber, int programNumber) {
     return 0; // 存在しない
 }
 
-void setPatchOverride(int bankNumber, int patchNumber, int relativeAddr, int value) {
+void PatchBankSet::setPatchOverride(int bankNumber, int patchNumber, int relativeAddr, int value) {
     if (bankNumber >= 0 && bankNumber < MAX_BANKS &&
         patchNumber >= 0 && patchNumber < PATCH_BANK_SIZE) {
-        Patch& patch = PatchBanks[bankNumber][patchNumber];
+        Patch& patch = banks[bankNumber][patchNumber];
         // オーバーライド処理
         if (relativeAddr >= 0 && relativeAddr < 0x42) {
             if (relativeAddr >= 0x02 && relativeAddr <= 0x0F)
@@ -298,13 +319,13 @@ Patch Patch::applyMutation(const Mutation& mutation) {
 };
 
 // JSONからPatchBankを読み込む
-bool loadPatchBankFromJSON(const std::string& filePath, int bankNumber) {
+bool PatchBankSet::loadFromJSON(const std::string& filePath, int bankNumber) {
     try {
         // ファイルを読み込む
         
         juce::File file(filePath);
         if (!file.exists()) {
-            std::cout << "[PatchLoaderJSON] Error: JSON file does not exist: " << filePath << std::endl;
+            std::cout << "[PatchLoaderJSON] JSON file not found, skipping: " << filePath << std::endl;
             return false;
         }
         juce::String jsonContent = file.loadFileAsString();
@@ -323,7 +344,7 @@ bool loadPatchBankFromJSON(const std::string& filePath, int bankNumber) {
         
         // 指定バンクの全てのパッチを未定義状態にリセット
         if (bankNumber >= 0 && bankNumber < MAX_BANKS) {
-            for (auto& patch : PatchBanks[bankNumber]) {
+            for (auto& patch : banks[bankNumber]) {
                 patch.defined = false;
             }
         } else {
@@ -346,7 +367,7 @@ bool loadPatchBankFromJSON(const std::string& filePath, int bankNumber) {
                 continue;
             }
             
-            Patch& patch = PatchBanks[bankNumber][programNumber];
+            Patch& patch = banks[bankNumber][programNumber];
             
             // パッチの基本情報
             patch.defined = true;
@@ -386,12 +407,12 @@ bool loadPatchBankFromJSON(const std::string& filePath, int bankNumber) {
 }
 
 // PatchBankをJSONに保存する
-bool savePatchBankToJSON(const std::string& filePath, int bankNumber) {
+bool PatchBankSet::saveBankToJSON(const std::string& filePath, int bankNumber) const {
     if (bankNumber < 0 || bankNumber >= MAX_BANKS) return false;
-    return savePatchBankToJSON(filePath, PatchBanks[bankNumber]);
+    return saveBankToJSON(filePath, banks[bankNumber]);
 }
 
-bool savePatchBankToJSON(const std::string& filePath, const std::vector<Patch>& bank) {
+bool PatchBankSet::saveBankToJSON(const std::string& filePath, const Bank& bank) {
     try {
         std::ostringstream json;
         json << "{\n  \"patches\": [\n";

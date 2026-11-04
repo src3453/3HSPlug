@@ -58,31 +58,45 @@ struct Patch {
 bool patchesEqual(const Patch& a, const Patch& b); // 意味のあるパラメータだけを比較する
 
 // バンクごとのパッチ定義（GSバンク対応）
-// PatchBanks:         発音に使う現在の内容（SysExオーバーライドを含む）
-// PatchBanksOriginal: GMリセットで戻す基準（JSONの内容＋UIでの編集）
-// PatchBanksFile:     JSONファイルから読み込んだままの内容（UIの「元に戻す」の基準）
-extern std::vector<std::vector<Patch>> PatchBanks;
-extern std::vector<std::vector<Patch>> PatchBanksOriginal;
-extern std::vector<std::vector<Patch>> PatchBanksFile;
-extern Patch defaultPatch; // デフォルトパッチ
+// プラグインインスタンスごとに1つ持つ（_3HSPlugAudioProcessorが所有する）。
+// プロセス全体で共有すると、同じDAW内の複数インスタンスが編集やステートを上書きし合う。
+class PatchBankSet {
+public:
+    using Bank = std::vector<Patch>;
+    using Banks = std::vector<Bank>;
 
-void initializePatchBanks(const std::string& patchesDir = "patches/");
-bool loadPatchBankFromYAML(const std::string& filePath);
-bool loadPatchBankFromJSON(const std::string& filePath, int bankNumber = 0);
-bool savePatchBankToYAML(const std::string& filePath);
-bool savePatchBankToJSON(const std::string& filePath, int bankNumber = 0);
-bool savePatchBankToJSON(const std::string& filePath, const std::vector<Patch>& bank);
+    PatchBankSet();
 
-// UIでの編集（GMリセット後も残る）
-void setUserPatch(int bankNumber, int programNumber, const Patch& patch);
-void revertUserPatch(int bankNumber, int programNumber); // JSONファイルの内容に戻す
-bool isUserPatchModified(int bankNumber, int programNumber); // JSONファイルの内容と異なるか
-bool saveUserPatchBank(const std::string& filePath, int bankNumber); // 基準の内容を保存し、ファイル側の基準を更新する
-void exportCurrentPatchBankToJSON(); // 一時的な関数: 現在のPatchBankをJSONに書き出す
-Patch& getPatchOrDefault(int bankNumber, int programNumber);
-void setPatchOverride(int bankNumber, int patchNumber, int relativeAddr, int value);
-void resetPatchBanks();
+    // banks:         発音に使う現在の内容（SysExオーバーライドを含む）
+    // originalBanks: GMリセットで戻す基準（JSONの内容＋UIでの編集）
+    // fileBanks:     JSONファイルから読み込んだままの内容（UIの「元に戻す」の基準）
+    Banks banks;
+    Banks originalBanks;
+    Banks fileBanks;
+    Patch defaultPatch; // デフォルトパッチ
 
-// 代理発音関連（バンク0へのフォールバック）
-Patch& getEffectivePatch(int bankNumber, int programNumber);
-int getPatchAvailability(int bankNumber, int programNumber);
+    void initialize(const std::string& patchesDir = "patches/");
+    bool loadFromJSON(const std::string& filePath, int bankNumber = 0);
+    bool saveBankToJSON(const std::string& filePath, int bankNumber = 0) const;
+    static bool saveBankToJSON(const std::string& filePath, const Bank& bank);
+
+    // UIでの編集（GMリセット後も残る）
+    void setUserPatch(int bankNumber, int programNumber, const Patch& patch);
+    void revertUserPatch(int bankNumber, int programNumber); // JSONファイルの内容に戻す
+    bool isUserPatchModified(int bankNumber, int programNumber) const; // JSONファイルの内容と異なるか
+    bool saveUserPatchBank(const std::string& filePath, int bankNumber); // 基準の内容を保存し、ファイル側の基準を更新する
+    void restoreFromFiles(); // 現在の内容とGMリセットの基準をJSONファイルの内容に戻す（UIでの編集も消える）
+    void clearUserPatch(int bankNumber, int programNumber); // 現在の内容と基準の両方で未定義にする
+    void exportCurrentToJSON() const; // 一時的な関数: 現在のPatchBankをJSONに書き出す
+    Patch& getPatchOrDefault(int bankNumber, int programNumber);
+    void setPatchOverride(int bankNumber, int patchNumber, int relativeAddr, int value);
+    void reset(); // GMリセット: SysExオーバーライドを取り消す
+
+    // 代理発音関連（バンク0へのフォールバック）
+    Patch& getEffectivePatch(int bankNumber, int programNumber);
+    const Patch& getEffectivePatch(int bankNumber, int programNumber) const;
+    int getPatchAvailability(int bankNumber, int programNumber) const;
+
+private:
+    void initDefaultPatch();
+};
