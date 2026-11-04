@@ -5,6 +5,7 @@
 #include "ui/Theme.h"
 #include "ui/Panels.h"
 #include "ui/PatchEditorPanel.h"
+#include "ui/ChannelStatusPanel.h"
 
 //==============================================================================
 // 区画:
@@ -33,6 +34,9 @@ private:
     juce::TooltipWindow tooltipWindow { this, 600 };
 
     ui::TitleBar titleBar;
+    juce::Component synthPage;
+    ui::ChannelStatusPanel channelStatus;
+    juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
     ui::ChannelActivityPanel channelActivity;
     ui::PatchEditorPanel patchEditor;
     ui::VoiceStatusPanel voiceStatus;

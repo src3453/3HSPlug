@@ -15,3 +15,15 @@ independence at 22.05/44.1/96 kHz; and the FIFO and quantization-setting API.
 The core itself is tested against the original float 3HS88PWN4 in the CPT32
 repository (`chips/3hs88pwn4`). With the JUCE checkout available, the patch test
 also checks JSON round trips and legacy patch fallback.
+
+The optional processor/editor test covers channel-isolated CC values, bank/program,
+pitch bend, melodic/drum notes, sustain, velocity-zero note off, CC120/123,
+Panic, GM reset and keyboard navigation between the channel monitor and editor.
+
+```powershell
+cmake -S . -B build -DTHREEHS_BUILD_UI_TESTS=ON
+cmake --build build --config Release --target channel_status_tests -- /m:1 /nodeReuse:false
+ctest --test-dir build -C Release --output-on-failure
+# Optionally export editor previews at the default and minimum sizes:
+build/Release/channel_status_tests.exe build/channel-status-preview
+```

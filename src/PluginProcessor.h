@@ -166,6 +166,14 @@ public:
     std::vector<uint8_t> getRamDumpPCM() const;
 
     // ---- UI用 ----
+    struct ChannelStatus {
+        int bank = 0, bankLsb = 0, program = 0, pitchBend = 0, velocity = 0;
+        bool drum = false;
+        std::array<uint8_t, 128> controllers {};
+        std::array<uint8_t, 128> notes {}; // Input MIDI notes, including sustain-held notes
+    };
+    // Keeps the previous UI frame if audio processing owns the lock.
+    bool readChannelStatus(std::array<ChannelStatus, 16>& destination) const;
     // マスター音量（dB、APVTSパラメータ）
     static constexpr const char* masterVolumeParamId = "masterVolume";
     static constexpr float masterVolumeMinDb = -60.0f; // この値は無音
@@ -318,6 +326,10 @@ private:
 
     // 各MIDIチャンネル・CC番号ごとの値 [1-16][0-127]（全要素127で初期化）
     uint8_t channelCC[17][128] = {{127}};
+    std::array<std::array<uint8_t, 128>, 16> monitorNotes {};
+    std::array<std::array<bool, 128>, 16> monitorKeysDown {};
+    std::array<int, 16> monitorVelocity {};
+    void trackChannelMessage(const juce::MidiMessage&);
     
     // Hold/Sustain Pedal状態管理
     std::array<bool, 16> channelSustainPedal{};  // CC#64の状態

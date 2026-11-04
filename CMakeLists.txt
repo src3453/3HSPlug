@@ -52,6 +52,7 @@ target_sources(3HSPlug
     PRIVATE
         src/PluginEditor.cpp
         src/ui/Panels.cpp
+        src/ui/ChannelStatusPanel.cpp
         src/ui/PatchEditorPanel.cpp
         src/ui/DrumKitPanel.cpp
         src/ui/AlgorithmDiagram.cpp
@@ -97,5 +98,16 @@ target_link_libraries(3HSPlug
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags)
+
+option(THREEHS_BUILD_UI_TESTS "Build MIDI monitor and editor smoke tests" OFF)
+if(THREEHS_BUILD_UI_TESTS)
+    enable_testing()
+    add_executable(channel_status_tests test/channel_status_tests.cpp)
+    target_include_directories(channel_status_tests PRIVATE src "${CMAKE_CURRENT_BINARY_DIR}/3HSPlug_artefacts/JuceLibraryCode")
+    target_include_directories(channel_status_tests PRIVATE src/s3hs_core/3hs/3hs816/include src/s3hs_core/3hs/3hs88pwn4/include)
+    target_link_libraries(channel_status_tests PRIVATE 3HSPlug)
+    add_test(NAME channel_status_tests COMMAND channel_status_tests)
+    set_tests_properties(channel_status_tests PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+endif()
 
 
