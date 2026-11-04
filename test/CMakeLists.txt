@@ -44,3 +44,10 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../lib/JUCE/modules/juce_core/juce_core.c
     endif()
     add_test(NAME patch_bank_tests COMMAND patch_bank_tests)
 endif()
+
+# The routing diagram keeps a copy of the core's algorithm table.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME algorithm_table_check
+        COMMAND Python3::Interpreter -I "${CMAKE_CURRENT_SOURCE_DIR}/algorithm_table_check.py")
+endif()

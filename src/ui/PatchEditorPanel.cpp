@@ -1,5 +1,4 @@
 #include "PatchEditorPanel.h"
-#include "../VolumeScalingMap.h"
 #include "../s3hs_core/3hs/3hs816/src/generated_tables.hpp"
 
 namespace ui {
@@ -196,7 +195,7 @@ juce::Rectangle<int> OperatorPanel::graphArea() const
 {
     // ノブ2段（1段62px）を優先し、残りが少なければ波形/エンベロープ表示を省く
     const int top = kHeaderTop + kHeaderHeight + space::xs;
-    const int spare = getHeight() - top - 2 * 62 - space::sm;
+    const int spare = getHeight() - top - 2 * 58 - space::sm;
     const int h = spare < 24 ? 0 : juce::jmin(56, spare);
     return getLocalBounds().reduced(space::xs, 0).withTrimmedTop(top).withHeight(h);
 }
@@ -346,10 +345,11 @@ PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p), dr
     fbDestBox.onChange = [this] { updateRoles(); pushEdit(); };
     fbDestBox.setTooltip("Feedback destination operator");
     addAndMakeVisible(fbDestBox);
+    addAndMakeVisible(diagram);
 
     feedback.slider.setRange(0, 255, 1);
     feedback.slider.setDoubleClickReturnValue(true, 128);
-    feedback.slider.onValueChange = [this] { pushEdit(); };
+    feedback.slider.onValueChange = [this] { updateRoles(); pushEdit(); };
     addAndMakeVisible(feedback);
 
     keyShift.slider.setRange(-48, 48, 1);
@@ -457,7 +457,7 @@ void PatchEditorPanel::loadFromProcessor()
     updateRoles();
 
     // ドラムチャンネルではFMの編集部分を隠し、ドラムキットの編集を出す
-    for (auto* c : std::initializer_list<juce::Component*> { &modeBox, &fbDestBox, &feedback, &keyShift, &revertButton, &saveButton, &statusLabel })
+    for (auto* c : std::initializer_list<juce::Component*> { &modeBox, &fbDestBox, &diagram, &feedback, &keyShift, &revertButton, &saveButton, &statusLabel })
         c->setVisible(!drumChannel);
     for (auto& op : operators)
         op->setVisible(!drumChannel);
@@ -493,7 +493,8 @@ void PatchEditorPanel::updateRoles()
     const int mode = juce::jlimit(0, 12, modeBox.getSelectedId() - 1);
     const int fbDest = juce::jlimit(0, 7, fbDestBox.getSelectedId() - 1);
     for (int i = 0; i < 8; ++i)
-        operators[static_cast<size_t>(i)]->setRole(volumeScalingMap[mode][i], i == fbDest);
+        operators[static_cast<size_t>(i)]->setRole(((algo::outputMask(mode) >> i) & 1u) != 0, i == fbDest);
+    diagram.setRouting(mode, fbDest, juce::roundToInt(feedback.slider.getValue()));
 }
 
 void PatchEditorPanel::updateStatus()
@@ -564,28 +565,31 @@ void PatchEditorPanel::resized()
     drumKit.setBounds(getLocalBounds().withTrimmedTop(space::sectionHeader).reduced(space::sm, 2)
                           .withTrimmedTop(space::control + space::sm).withTrimmedBottom(space::sm));
 
+    // 左: チャンネルと名前 / 状態 / Revert・Save、中: アルゴリズムとフィードバック、右: 経路図
     auto global = globalArea();
-    auto left = global.removeFromLeft(juce::jmin(440, global.getWidth() / 2));
+    auto left = global.removeFromLeft(juce::jlimit(240, 320, global.getWidth() * 3 / 10));
     auto top = left.removeFromTop(space::control);
     channelBox.setBounds(top.removeFromLeft(84));
     top.removeFromLeft(space::md);
     programLabel.setBounds(top);
     left.removeFromTop(space::xs);
-    statusLabel.setBounds(left.removeFromTop(20));
+    auto buttons = left.removeFromBottom(space::control);
+    revertButton.setBounds(buttons.removeFromLeft(96));
+    buttons.removeFromLeft(space::sm);
+    saveButton.setBounds(buttons.removeFromLeft(104));
+    statusLabel.setBounds(left.withSizeKeepingCentre(left.getWidth(), 20));
+    global.removeFromLeft(space::md);
 
-    auto buttons = global.removeFromRight(104);
-    revertButton.setBounds(buttons.removeFromTop(space::control));
-    buttons.removeFromTop(space::xs);
-    saveButton.setBounds(buttons.removeFromTop(space::control));
-    global.removeFromRight(space::md);
-
-    keyShift.setBounds(global.removeFromRight(64));
-    feedback.setBounds(global.removeFromRight(64));
-    global.removeFromRight(space::sm);
-    auto combos = global.removeFromRight(juce::jmin(200, global.getWidth()));
+    auto combos = global.removeFromLeft(global.getWidth() > 760 ? 200 : 176);
     modeBox.setBounds(combos.removeFromTop(space::control));
     combos.removeFromTop(space::xs);
     fbDestBox.setBounds(combos.removeFromTop(space::control));
+    global.removeFromLeft(space::sm);
+    auto knobs = global.removeFromLeft(128).withTrimmedBottom(space::control + space::xs);
+    feedback.setBounds(knobs.removeFromLeft(64));
+    keyShift.setBounds(knobs.removeFromLeft(64));
+    global.removeFromLeft(space::md);
+    diagram.setBounds(global);
 
     auto ops = operatorsArea();
     const int cols = 4;
