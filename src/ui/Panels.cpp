@@ -497,6 +497,16 @@ SettingsOverlay::SettingsOverlay(_3HSPlugAudioProcessor& p) : processor(p)
         numChipsBox.addItem(juce::String(i) + (i == 1 ? " chip" : " chips") + "  (" + juce::String(i * 8) + " FM voices)", i);
     numChipsBox.onChange = [this] { processor.setNumChips(numChipsBox.getSelectedId()); };
 
+    allocationLabel.setText("Voice allocation", juce::dontSendNotification);
+    setLabelFont(allocationLabel, type::body);
+    addAndMakeVisible(allocationLabel);
+    allocationBox.addItem("Rolling (cycle through voices)", 1);
+    allocationBox.addItem("Lowest free voice first", 2);
+    allocationBox.addItem("Least recently used", 3);
+    allocationBox.setTooltip("How new notes are assigned to FM voices. Steals the oldest voice when all are in use.");
+    allocationBox.onChange = [this] { processor.setAllocationStrategy(allocationBox.getSelectedId() - 1); };
+    addAndMakeVisible(allocationBox);
+
     fontLabel.setText("UI font", juce::dontSendNotification);
     setLabelFont(fontLabel, type::body);
     addAndMakeVisible(fontLabel);
@@ -641,6 +651,7 @@ void SettingsOverlay::open()
 {
     reloadThemeList();
     numChipsBox.setSelectedId(processor.getNumChips(), juce::dontSendNotification);
+    allocationBox.setSelectedId(processor.getAllocationStrategy() + 1, juce::dontSendNotification);
     fontBox.setSelectedId(static_cast<int>(currentFontChoice()) + 1, juce::dontSendNotification);
     scaleBox.setSelectedId(currentUIScalePercent(), juce::dontSendNotification);
     pcOverrideToggle.setToggleState(processor.isPcOverrideEnabled(), juce::dontSendNotification);
@@ -723,6 +734,10 @@ void SettingsOverlay::resized()
     auto row = area.removeFromTop(space::control);
     numChipsLabel.setBounds(row.removeFromLeft(140));
     numChipsBox.setBounds(row.removeFromLeft(240));
+    area.removeFromTop(space::xs);
+    row = area.removeFromTop(space::control);
+    allocationLabel.setBounds(row.removeFromLeft(140));
+    allocationBox.setBounds(row.removeFromLeft(240));
 
     area.removeFromTop(space::xl + 6);
     pcOverrideToggle.setBounds(area.removeFromTop(space::control).removeFromLeft(260));
