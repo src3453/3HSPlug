@@ -4,6 +4,7 @@
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
 #include "Theme.h"
+#include "DrumKitPanel.h"
 
 namespace ui {
 
@@ -40,6 +41,8 @@ private:
     void drawEnvelope(juce::Graphics&, juce::Rectangle<float>) const;
     juce::Rectangle<int> graphArea() const;
 
+    static constexpr int kHeaderTop = 6;
+    static constexpr int kHeaderHeight = 28;
     const int index;
     bool carrier = true;
     bool feedbackTarget = false;
@@ -68,6 +71,9 @@ private:
     juce::Rectangle<int> globalArea() const;
     juce::Rectangle<int> operatorsArea() const;
 
+    static constexpr int kGlobalHeight = 2 * space::control + space::xs;
+    static constexpr int kOpGap = 2 * space::md;
+
     _3HSPlugAudioProcessor& processor;
     int channel = 1;
     Patch patch;
@@ -80,12 +86,12 @@ private:
     juce::ComboBox modeBox;
     juce::ComboBox fbDestBox;
     Knob feedback { "Feedback" };
-    Knob keyShift { "Key Shift" };
+    Knob keyShift { "Key shift" };
     juce::TextButton revertButton { "Revert" };
     juce::TextButton saveButton { "Save Bank" };
     juce::Label programLabel;
     juce::Label statusLabel;
-    juce::Label drumNotice;
+    DrumKitPanel drumKit;
     juce::String saveMessage;
     uint32_t saveMessageFrames = 0;
     std::array<std::unique_ptr<OperatorPanel>, 8> operators;

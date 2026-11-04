@@ -38,34 +38,68 @@ void TitleBar::paint(juce::Graphics& g)
 
     auto text = getLocalBounds().reduced(14, 0);
     g.setColour(colours::text);
-    g.setFont(font(26.0f, true));
+    g.setFont(font(type::display, true));
     const juce::String logo = "3HSPlug";
     const int logoW = juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), logo) + 4;
     g.drawText(logo, text.removeFromLeft(logoW), juce::Justification::centredLeft);
     text.removeFromLeft(12);
 
     auto sub = text.removeFromLeft(420);
-    g.setColour(colours::accent);
-    g.setFont(font(13.0f, true));
+    g.setColour(colours::text);
+    g.setFont(font(type::body, true));
     g.drawText("3HS88PWN4 Harmonic MIDI Synthesizer", sub.removeFromTop(sub.getHeight() / 2).withTrimmedTop(4),
                juce::Justification::bottomLeft);
     g.setColour(colours::textDim);
-    g.setFont(font(11.0f));
-    g.drawText("by src3453  |  build " BUILD_DATE, sub.withTrimmedBottom(4), juce::Justification::topLeft);
+    g.setFont(font(type::caption));
+    g.drawText("by src3453, built " BUILD_DATE, sub.withTrimmedBottom(4), juce::Justification::topLeft);
 }
 
 void TitleBar::resized()
 {
-    auto area = getLocalBounds().withTrimmedBottom(2).reduced(10, 9);
-    settingsButton.setBounds(area.removeFromRight(90));
-    area.removeFromRight(8);
-    panicButton.setBounds(area.removeFromRight(70));
+    auto area = getLocalBounds().withTrimmedBottom(2).reduced(space::md, 0);
+    area = area.withSizeKeepingCentre(area.getWidth(), space::control);
+    settingsButton.setBounds(area.removeFromRight(96));
+    area.removeFromRight(space::sm);
+    panicButton.setBounds(area.removeFromRight(76));
 }
 
 //==============================================================================
 ChannelActivityPanel::ChannelActivityPanel(_3HSPlugAudioProcessor& p) : processor(p)
 {
     setRepaintsOnMouseActivity(false);
+    setWantsKeyboardFocus(true);
+    setTitle("Channel activity");
+    setDescription("Left and right arrows choose the MIDI channel shown in the editor");
+}
+
+bool ChannelActivityPanel::keyPressed(const juce::KeyPress& key)
+{
+    int ch = selectedChannel;
+    if (key == juce::KeyPress::leftKey) ch = juce::jmax(1, ch - 1);
+    else if (key == juce::KeyPress::rightKey) ch = juce::jmin(16, ch + 1);
+    else if (key == juce::KeyPress::homeKey) ch = 1;
+    else if (key == juce::KeyPress::endKey) ch = 16;
+    else return false;
+    if (ch != selectedChannel) {
+        selectedChannel = ch;
+        if (onChannelSelected)
+            onChannelSelected(ch);
+    }
+    showFocusRing = true;
+    repaint();
+    return true;
+}
+
+void ChannelActivityPanel::focusGained(FocusChangeType cause)
+{
+    showFocusRing = cause != focusChangedByMouseClick;
+    repaint();
+}
+
+void ChannelActivityPanel::focusLost(FocusChangeType)
+{
+    showFocusRing = false;
+    repaint();
 }
 
 void ChannelActivityPanel::update()
@@ -113,7 +147,7 @@ void ChannelActivityPanel::update()
 
 juce::Rectangle<int> ChannelActivityPanel::columnsArea() const
 {
-    return getLocalBounds().withTrimmedTop(22).reduced(8, 4).withTrimmedBottom(2);
+    return getLocalBounds().withTrimmedTop(space::sectionHeader).reduced(space::sm, space::xs).withTrimmedBottom(2);
 }
 
 int ChannelActivityPanel::channelAt(juce::Point<int> pos) const
@@ -126,6 +160,7 @@ int ChannelActivityPanel::channelAt(juce::Point<int> pos) const
 
 void ChannelActivityPanel::mouseDown(const juce::MouseEvent& e)
 {
+    showFocusRing = false;
     if (const int ch = channelAt(e.getPosition()); ch > 0) {
         selectedChannel = ch;
         if (onChannelSelected)
@@ -136,23 +171,23 @@ void ChannelActivityPanel::mouseDown(const juce::MouseEvent& e)
 
 void ChannelActivityPanel::paint(juce::Graphics& g)
 {
-    drawSection(g, getLocalBounds(), "Channel Activity");
+    drawSection(g, getLocalBounds(), "Channel activity");
 
     // 見出しの右にGSテキストを出す
     if (showGsText) {
-        auto header = getLocalBounds().removeFromTop(22).reduced(10, 3);
+        auto header = getLocalBounds().removeFromTop(space::sectionHeader).reduced(space::md, 3);
         auto lcd = header.removeFromRight(juce::jmin(260, header.getWidth() / 2));
         g.setColour(colours::lcdBack);
         g.fillRoundedRectangle(lcd.toFloat(), 3.0f);
         g.setColour(colours::lcdOn);
-        g.setFont(monoFont(12.0f));
+        g.setFont(monoFont(type::small));
         g.drawText(gsText, lcd.reduced(6, 0), juce::Justification::centredLeft, true);
     }
 
     const auto area = columnsArea();
     const float colW = area.getWidth() / 16.0f;
-    const int labelH = 14;
-    const int progH = 13;
+    const int labelH = 15;
+    const int progH = 14;
     auto barsTop = area.getY() + labelH + 2;
     auto barsBottom = area.getBottom() - progH - 2;
     const int barsH = juce::jmax(16, barsBottom - barsTop);
@@ -174,12 +209,16 @@ void ChannelActivityPanel::paint(juce::Graphics& g)
         if (selected) {
             g.setColour(colours::accent.withAlpha(0.12f));
             g.fillRoundedRectangle(col.toFloat().expanded(1.0f, 0.0f), 4.0f);
-            g.setColour(colours::accent);
-            g.drawRoundedRectangle(col.toFloat().expanded(1.0f, 0.0f), 4.0f, 1.2f);
+            if (showFocusRing)
+                drawFocusRing(g, col.toFloat().expanded(2.0f, 1.0f));
+            else {
+                g.setColour(colours::accent);
+                g.drawRoundedRectangle(col.toFloat().expanded(1.0f, 0.0f), 4.0f, 1.2f);
+            }
         }
 
         g.setColour(selected ? colours::accent : colours::text);
-        g.setFont(font(11.5f, true));
+        g.setFont(font(type::small, true));
         g.drawText(juce::String(ch + 1) + (drum ? " D" : ""), col.withHeight(labelH), juce::Justification::centred);
 
         auto bars = juce::Rectangle<int>(col.getX() + 3, barsTop, col.getWidth() - 6, barsH);
@@ -205,7 +244,7 @@ void ChannelActivityPanel::paint(juce::Graphics& g)
         }
 
         const auto loc = processor.getChannelPatchLocation(ch + 1);
-        g.setFont(monoFont(9.5f));
+        g.setFont(monoFont(type::caption));
         g.setColour(loc.availability == 2 ? colours::textDim
                     : loc.availability == 1 ? colours::meterYellow : colours::meterRed);
         if (drum)
@@ -223,8 +262,8 @@ VoiceStatusPanel::VoiceStatusPanel(_3HSPlugAudioProcessor& p) : processor(p) {}
 int VoiceStatusPanel::getPreferredHeight() const
 {
     const int chips = processor.getNumChips();
-    const int rowH = chips <= 4 ? 18 : chips <= 8 ? 13 : 6;
-    return 22 + 8 + chips * rowH;
+    const int rowH = chips <= 4 ? 18 : chips <= 8 ? 15 : 6;
+    return space::sectionHeader + space::sm + chips * rowH;
 }
 
 void VoiceStatusPanel::paint(juce::Graphics& g)
@@ -238,7 +277,7 @@ void VoiceStatusPanel::paint(juce::Graphics& g)
         return;
 
     const float rowH = area.getHeight() / static_cast<float>(chips);
-    const bool showText = rowH >= 13.0f;
+    const bool showText = rowH >= 15.0f; // 11pxの文字が入る行だけ
     const int labelW = 52;
     const int gap = 10;
     const float cellW = (area.getWidth() - labelW - gap) / 12.0f;
@@ -246,15 +285,13 @@ void VoiceStatusPanel::paint(juce::Graphics& g)
     for (int chip = 0; chip < chips; ++chip) {
         const float y = area.getY() + chip * rowH;
         g.setColour(colours::textDim);
-        if (rowH >= 9.0f) {
-            g.setFont(font(juce::jmin(11.0f, rowH - 2.0f), true));
-            g.drawText("CHIP " + juce::String(chip + 1), juce::Rectangle<float>(static_cast<float>(area.getX()), y, labelW, rowH),
+        g.setFont(font(type::caption, true));
+        if (rowH >= 13.0f)
+            g.drawText("Chip " + juce::String(chip + 1), juce::Rectangle<float>(static_cast<float>(area.getX()), y, labelW, rowH),
                        juce::Justification::centredLeft);
-        } else if (chip % 4 == 0) {
-            g.setFont(font(9.0f, true));
-            g.drawText("CHIP " + juce::String(chip + 1), juce::Rectangle<float>(static_cast<float>(area.getX()), y, labelW, 10.0f),
+        else if (chip % 4 == 0)
+            g.drawText("Chip " + juce::String(chip + 1), juce::Rectangle<float>(static_cast<float>(area.getX()), y, labelW, 13.0f),
                        juce::Justification::topLeft);
-        }
 
         for (int cell = 0; cell < 12; ++cell) {
             const bool pcm = cell >= 8;
@@ -293,7 +330,7 @@ void VoiceStatusPanel::paint(juce::Graphics& g)
                 g.fillRoundedRectangle(r.withWidth(juce::jmax(2.0f, r.getWidth() * level)), 2.0f);
                 if (showText) {
                     g.setColour(colours::text);
-                    g.setFont(monoFont(juce::jmin(11.0f, rowH - 4.0f)));
+                    g.setFont(monoFont(type::caption));
                     g.drawText(juce::String(midiCh) + " " + noteName(note), r.reduced(3.0f, 0.0f),
                                juce::Justification::centredLeft, false);
                 }
@@ -301,12 +338,16 @@ void VoiceStatusPanel::paint(juce::Graphics& g)
         }
     }
 
-    // 列の見出し（最上段の上に小さく）
+    // 列の見出し（区画の見出しの行に、それぞれの列の上へ）
     g.setColour(colours::textDim);
-    g.setFont(font(10.0f));
-    auto header = getLocalBounds().removeFromTop(22).reduced(10, 0);
-    header.removeFromLeft(labelW + 70);
-    g.drawText("FM 1-8   |   PCM 1-4", header, juce::Justification::centredRight);
+    g.setFont(font(type::caption));
+    const auto headerRow = getLocalBounds().removeFromTop(space::sectionHeader);
+    const int fmX = area.getX() + labelW;
+    const int pcmX = juce::roundToInt(area.getX() + labelW + 8 * cellW + gap);
+    g.drawText("FM voices 1 to 8", fmX + 2, headerRow.getY(), juce::roundToInt(8 * cellW), headerRow.getHeight(),
+               juce::Justification::centredLeft);
+    g.drawText("PCM 1 to 4", pcmX + 2, headerRow.getY(), juce::roundToInt(4 * cellW), headerRow.getHeight(),
+               juce::Justification::centredLeft);
 }
 
 //==============================================================================
@@ -316,12 +357,14 @@ MasterSection::MasterSection(_3HSPlugAudioProcessor& p) : processor(p)
     fader.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
     fader.setDoubleClickReturnValue(true, 0.0);
     fader.setTooltip("Master volume (double-click: 0 dB)");
+    fader.setWantsKeyboardFocus(true);
+    fader.setTitle("Master volume");
     addAndMakeVisible(fader);
     attachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment>(
         processor.getParameters(), _3HSPlugAudioProcessor::masterVolumeParamId, fader);
 
     valueLabel.setJustificationType(juce::Justification::centred);
-    valueLabel.setFont(monoFont(12.0f));
+    valueLabel.setFont(monoFont(type::small));
     valueLabel.setEditable(false, true);
     valueLabel.onTextChange = [this] {
         fader.setValue(valueLabel.getText().retainCharacters("-0123456789.").getFloatValue(), juce::sendNotificationSync);
@@ -337,18 +380,18 @@ MasterSection::MasterSection(_3HSPlugAudioProcessor& p) : processor(p)
 
 void MasterSection::resized()
 {
-    auto area = getLocalBounds().withTrimmedTop(22).reduced(6, 6);
+    auto area = getLocalBounds().withTrimmedTop(space::sectionHeader).reduced(space::sm, space::sm);
     valueLabel.setBounds(area.removeFromBottom(20));
-    area.removeFromBottom(4);
-    area.removeFromTop(16); // クリップ表示
+    area.removeFromBottom(space::xs);
+    area.removeFromTop(16 + space::xs); // クリップ表示
     fader.setBounds(area.removeFromLeft(area.getWidth() / 2).reduced(0, 0));
 }
 
 juce::Rectangle<int> MasterSection::meterArea() const
 {
-    auto area = getLocalBounds().withTrimmedTop(22).reduced(6, 6);
-    area.removeFromBottom(24);
-    area.removeFromTop(16);
+    auto area = getLocalBounds().withTrimmedTop(space::sectionHeader).reduced(space::sm, space::sm);
+    area.removeFromBottom(20 + space::xs);
+    area.removeFromTop(16 + space::xs);
     area.removeFromLeft(area.getWidth() / 2);
     return area.reduced(2, 6);
 }
@@ -382,12 +425,12 @@ void MasterSection::paint(juce::Graphics& g)
     drawSection(g, getLocalBounds(), "Master");
 
     auto meter = meterArea();
-    auto clip = getLocalBounds().withTrimmedTop(22).reduced(6, 6).removeFromTop(14);
+    auto clip = getLocalBounds().withTrimmedTop(space::sectionHeader).reduced(space::sm, space::sm).removeFromTop(16);
     g.setColour(clipped ? colours::meterRed : colours::panelRaised);
     g.fillRoundedRectangle(clip.toFloat(), 3.0f);
     g.setColour(clipped ? colours::background : colours::textDim);
-    g.setFont(font(10.0f, true));
-    g.drawText("CLIP", clip, juce::Justification::centred);
+    g.setFont(font(type::caption, true));
+    g.drawText("Clip", clip, juce::Justification::centred);
 
     constexpr float minDb = -60.0f, maxDb = 6.0f;
     auto yFor = [&](float gain) {
@@ -404,7 +447,7 @@ void MasterSection::paint(juce::Graphics& g)
         grad.addColour(0.35, colours::meterYellow);
         g.setGradientFill(grad);
         g.fillRect(bar.withTop(yFor(peak[c])));
-        g.setColour(juce::Colours::white.withAlpha(0.35f));
+        g.setColour(colours::meterRms);
         g.fillRect(bar.withTop(yFor(rms[c])).reduced(barW * 0.3f, 0.0f));
         if (hold[c] > 0.001f) {
             g.setColour(hold[c] >= 1.0f ? colours::meterRed : colours::text);
@@ -413,7 +456,7 @@ void MasterSection::paint(juce::Graphics& g)
     }
 
     // 目盛り
-    g.setFont(font(9.0f));
+    g.setFont(font(type::caption));
     const int scaleX = meter.getX() + 2 * barW + 4;
     for (float db : { 6.0f, 0.0f, -6.0f, -12.0f, -24.0f, -36.0f, -48.0f }) {
         const float y = yFor(juce::Decibels::decibelsToGain(db));
@@ -431,7 +474,7 @@ SettingsOverlay::SettingsOverlay(_3HSPlugAudioProcessor& p) : processor(p)
     addAndMakeVisible(closeButton);
 
     numChipsLabel.setText("Number of chips", juce::dontSendNotification);
-    numChipsLabel.setFont(font(13.0f));
+    numChipsLabel.setFont(font(type::body));
     addAndMakeVisible(numChipsLabel);
     for (int i = 1; i <= 16; ++i)
         numChipsBox.addItem(juce::String(i) + (i == 1 ? " chip" : " chips") + "  (" + juce::String(i * 8) + " FM voices)", i);
@@ -443,10 +486,10 @@ SettingsOverlay::SettingsOverlay(_3HSPlugAudioProcessor& p) : processor(p)
 
     auto setupNumber = [this](juce::Slider& s, juce::Label& label, const juce::String& name, int maxValue) {
         label.setText(name, juce::dontSendNotification);
-        label.setFont(font(13.0f));
+        label.setFont(font(type::body));
         addAndMakeVisible(label);
         s.setSliderStyle(juce::Slider::IncDecButtons);
-        s.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 50, 24);
+        s.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 50, space::control);
         s.setRange(0, maxValue, 1);
         addAndMakeVisible(s);
     };
@@ -461,7 +504,7 @@ SettingsOverlay::SettingsOverlay(_3HSPlugAudioProcessor& p) : processor(p)
     addAndMakeVisible(gmResetButton);
     addAndMakeVisible(panicButton);
 
-    infoLabel.setFont(monoFont(12.0f));
+    infoLabel.setFont(monoFont(type::small));
     infoLabel.setJustificationType(juce::Justification::topLeft);
     infoLabel.setColour(juce::Label::textColourId, colours::textDim);
     addAndMakeVisible(infoLabel);
@@ -507,12 +550,12 @@ void SettingsOverlay::update()
 
 juce::Rectangle<int> SettingsOverlay::panelBounds() const
 {
-    return getLocalBounds().withSizeKeepingCentre(juce::jmin(560, getWidth() - 40), juce::jmin(470, getHeight() - 40));
+    return getLocalBounds().withSizeKeepingCentre(juce::jmin(560, getWidth() - 40), juce::jmin(500, getHeight() - 40));
 }
 
 void SettingsOverlay::paint(juce::Graphics& g)
 {
-    g.fillAll(juce::Colours::black.withAlpha(0.55f));
+    g.fillAll(colours::scrim);
     auto panel = panelBounds();
     g.setColour(colours::panel);
     g.fillRoundedRectangle(panel.toFloat(), 8.0f);
@@ -521,49 +564,49 @@ void SettingsOverlay::paint(juce::Graphics& g)
 
     auto area = panel.reduced(18, 14);
     g.setColour(colours::text);
-    g.setFont(font(18.0f, true));
+    g.setFont(font(type::heading, true));
     g.drawText("Settings", area.removeFromTop(28), juce::Justification::centredLeft);
 
     auto heading = [&](int y, const juce::String& text) {
-        g.setColour(colours::accent);
-        g.setFont(font(11.5f, true));
-        g.drawText(text.toUpperCase(), area.getX(), y, area.getWidth(), 16, juce::Justification::centredLeft);
+        g.setColour(colours::textDim);
+        g.setFont(font(type::small, true));
+        g.drawText(text, area.getX(), y, area.getWidth(), 16, juce::Justification::centredLeft);
         g.setColour(colours::outline);
         g.drawHorizontalLine(y + 17, static_cast<float>(area.getX()), static_cast<float>(area.getRight()));
     };
     heading(numChipsLabel.getY() - 24, "Engine");
-    heading(pcOverrideToggle.getY() - 24, "Program Change");
+    heading(pcOverrideToggle.getY() - 24, "Program change");
     heading(gmResetButton.getY() - 24, "Reset");
     heading(infoLabel.getY() - 22, "Status");
 }
 
 void SettingsOverlay::resized()
 {
-    auto area = panelBounds().reduced(18, 14);
-    closeButton.setBounds(area.removeFromTop(28).removeFromRight(80).reduced(0, 2));
+    auto area = panelBounds().reduced(space::lg + 2, space::md + 2);
+    closeButton.setBounds(area.removeFromTop(space::control).removeFromRight(80));
 
-    area.removeFromTop(30);
-    auto row = area.removeFromTop(26);
+    area.removeFromTop(space::xl + 4);
+    auto row = area.removeFromTop(space::control);
     numChipsLabel.setBounds(row.removeFromLeft(140));
     numChipsBox.setBounds(row.removeFromLeft(240));
 
-    area.removeFromTop(32);
-    pcOverrideToggle.setBounds(area.removeFromTop(24).removeFromLeft(260));
-    area.removeFromTop(4);
-    row = area.removeFromTop(26);
+    area.removeFromTop(space::xl + 6);
+    pcOverrideToggle.setBounds(area.removeFromTop(space::control).removeFromLeft(260));
+    area.removeFromTop(space::xs);
+    row = area.removeFromTop(space::control);
     pcBankLabel.setBounds(row.removeFromLeft(50));
-    pcBankSlider.setBounds(row.removeFromLeft(130));
-    row.removeFromLeft(20);
+    pcBankSlider.setBounds(row.removeFromLeft(140));
+    row.removeFromLeft(space::lg);
     pcProgramLabel.setBounds(row.removeFromLeft(64));
-    pcProgramSlider.setBounds(row.removeFromLeft(130));
+    pcProgramSlider.setBounds(row.removeFromLeft(140));
 
-    area.removeFromTop(32);
-    row = area.removeFromTop(26);
+    area.removeFromTop(space::xl + 6);
+    row = area.removeFromTop(space::control);
     gmResetButton.setBounds(row.removeFromLeft(110));
-    row.removeFromLeft(10);
+    row.removeFromLeft(space::sm);
     panicButton.setBounds(row.removeFromLeft(120));
 
-    area.removeFromTop(30);
+    area.removeFromTop(space::xl + 4);
     infoLabel.setBounds(area);
 }
 
@@ -580,6 +623,60 @@ bool SettingsOverlay::keyPressed(const juce::KeyPress& key)
         return true;
     }
     return false;
+}
+
+//==============================================================================
+FocusRingOverlay::FocusRingOverlay(juce::Component& r) : root(r)
+{
+    setInterceptsMouseClicks(false, false);
+    juce::Desktop::getInstance().addFocusChangeListener(this);
+    root.addMouseListener(this, true);
+}
+
+FocusRingOverlay::~FocusRingOverlay()
+{
+    root.removeMouseListener(this);
+    juce::Desktop::getInstance().removeFocusChangeListener(this);
+}
+
+void FocusRingOverlay::globalFocusChanged(juce::Component* focused)
+{
+    target = nullptr;
+    const bool byMouse = juce::ModifierKeys::currentModifiers.isAnyMouseButtonDown();
+    // チャンネルとドラムのグリッドは自分で選択中のセルにリングを描く。設定画面そのものは囲まない。
+    const bool ownRing = dynamic_cast<ChannelActivityPanel*>(focused) != nullptr
+                         || dynamic_cast<SettingsOverlay*>(focused) != nullptr
+                         || focused == &root
+                         || (focused != nullptr && focused->getComponentID() == "ownFocusRing");
+    if (focused != nullptr && !byMouse && !ownRing && root.isParentOf(focused))
+        target = focused;
+    refresh();
+    repaint();
+}
+
+void FocusRingOverlay::mouseDown(const juce::MouseEvent&)
+{
+    if (target != nullptr) {
+        target = nullptr;
+        repaint();
+    }
+}
+
+void FocusRingOverlay::refresh()
+{
+    juce::Rectangle<int> bounds;
+    if (target != nullptr && target->isShowing())
+        bounds = getLocalArea(target, target->getLocalBounds());
+    if (bounds != lastBounds) {
+        lastBounds = bounds;
+        repaint();
+    }
+}
+
+void FocusRingOverlay::paint(juce::Graphics& g)
+{
+    if (!lastBounds.isEmpty())
+        drawFocusRing(g, lastBounds.toFloat().expanded(2.0f));
 }
 
 } // namespace ui

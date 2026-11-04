@@ -7,6 +7,7 @@
 #include <chrono>
 #include <JuceHeader.h>
 #include "DrumKeymapManager.h"
+#include "DrumKit.h"
 #include "PatchBankData.h"
 #include "s3hs_core/sound.cpp"
 
@@ -194,6 +195,27 @@ public:
     // このインスタンスのパッチバンク（テスト・診断用。processLock外での書き込みは避けること）
     const PatchBankSet& getPatchBanks() const noexcept { return patchBanks; }
 
+    // ---- ドラムキット（メッセージスレッドから呼ぶ） ----
+    struct DrumSlotView {
+        juce::File file;
+        bool assigned = false;
+        bool missing = false;
+        bool isDefault = false; // PCMフォルダの既定の割り当てのまま
+        juce::String error;
+        uint32_t length = 0;
+        uint32_t sampleRate = 0;
+    };
+    static constexpr uint32_t drumMemoryCapacity = DrumKit::kPcmMemorySize;
+    DrumSlotView getDrumSlot(int note) const;
+    uint32_t getDrumMemoryUsed() const;
+    juce::Result assignDrumSample(int note, const juce::File& file);
+    void clearDrumSample(int note);
+    void resetDrumKit();
+    juce::Result loadDrumKitFile(const juce::File& file);
+    juce::Result saveDrumKitFile(const juce::File& file) const;
+    void auditionDrum(int note, int velocity = 110); // 次のブロックでCH10のノートオンを鳴らす
+    uint32_t getDrumKitRevision() const noexcept { return drumKitRevision.load(); }
+
     // GS Dot Matrix Data (64 bytes)
     std::array<uint8_t, 64> gsDotMatrixData{};
     std::atomic<bool> gsDotMatrixUpdated{false};
@@ -207,6 +229,16 @@ private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     void applyPatchToActiveVoices(int bankNumber, int programNumber); // processLock保持中に呼ぶ
     void updateDrumChannelMask();
+    void commitDrumKit();       // kitLock保持中に呼ぶ。キーマップとチップのPCMメモリへ反映する
+    void silenceDrumVoices();   // processLock保持中に呼ぶ
+    void uploadDrumMemory(S3HS_sound& sound, uint32_t bytes) const;
+
+    mutable juce::CriticalSection kitLock; // 必ず processLock より先に取る
+    DrumKit drumKit;
+    uint32_t uploadedDrumBytes = 0;
+    std::atomic<uint32_t> drumKitRevision { 0 };
+    juce::SpinLock uiMidiLock;
+    juce::MidiBuffer uiMidi; // 試聴用
 
     std::atomic<float>* masterVolumeParam = nullptr;
     juce::SmoothedValue<float> masterGain { 1.0f };

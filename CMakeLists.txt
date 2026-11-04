@@ -47,9 +47,11 @@ target_sources(3HSPlug
         src/PluginEditor.cpp
         src/ui/Panels.cpp
         src/ui/PatchEditorPanel.cpp
+        src/ui/DrumKitPanel.cpp
         src/PluginProcessor.cpp
         src/PatchBankData.cpp
         src/DrumKeymapManager.cpp
+        src/DrumKit.cpp
         src/DrumPcmSampleLoader.cpp
         src/CommandLineArgs.cpp
         # integer 3HS core (vendored from CPT32, see src/s3hs_core/3hs/README.md)

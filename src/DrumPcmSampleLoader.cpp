@@ -1,6 +1,5 @@
 // DrumPcmSampleLoader.cpp
 #include "DrumPcmSampleLoader.h"
-#include "DrumKeymapManager.h"
 #include <juce_audio_formats/juce_audio_formats.h>
 #include <fstream>
 #include <iostream>
@@ -8,8 +7,6 @@
 #include <cstdint>
 #include <cstring>
 
-extern uint8_t* g_pcmRam;
-extern size_t g_pcmRamSize;
 
 
 DecodedWav DrumPcmSampleLoader::loadAndDecode(const std::string& filePath) {
@@ -52,39 +49,4 @@ std::vector<uint8_t> DrumPcmSampleLoader::convertToRaw8bit(const std::vector<flo
         out.push_back(val);
     }
     return out;
-}
-
-bool DrumPcmSampleLoader::loadSampleToRam(const std::string& filePath, uint32_t ramAddress, uint32_t& outSampleRate, uint32_t& outPcmSize) {
-    auto decoded = loadAndDecode(filePath);
-    if (decoded.pcm.empty()) return false;
-    auto raw8 = convertToRaw8bit(decoded.pcm);
-    if (!g_pcmRam || ramAddress + raw8.size() > g_pcmRamSize) return false;
-    std::memcpy(g_pcmRam + ramAddress, raw8.data(), raw8.size());
-    outSampleRate = decoded.sampleRate;
-    outPcmSize = static_cast<uint32_t>(raw8.size());
-    return true;
-}
-
-// 一括ロード: 指定ディレクトリ内の[ノート番号].wavを全てロードし、キーマップに登録
-void loadAllDrumSamples(DrumKeymapManager& keymap, uint32_t baseRamAddr, const std::string& pcmPath) {
-    uint32_t ramPtr = baseRamAddr;
-    const juce::File sampleDirectory(pcmPath);
-    printf("[DrumPcmSampleLoader] Loading drum samples from: %s\n", pcmPath.c_str());
-    
-    for (int note = 0; note < 128; ++note) {
-        const auto sampleFile = sampleDirectory.getChildFile(juce::String(note) + ".wav");
-        if (!sampleFile.existsAsFile()) {
-            continue;
-        }
-
-        DrumPcmSampleLoader loader;
-        uint32_t sampleRate = 44100;
-        uint32_t pcmSize = 0;
-        if (loader.loadSampleToRam(sampleFile.getFullPathName().toStdString(), ramPtr, sampleRate, pcmSize)) {
-            keymap.assignNoteToSample(10, note, ramPtr, sampleRate, pcmSize); // MIDI ch10
-            ramPtr += pcmSize; // PCMデータ長分だけポインタを進める
-            printf("[DrumPcmSampleLoader] Loaded note %d from %s\n", note, sampleFile.getFullPathName().toRawUTF8());
-        }
-    }
-    printf("[DrumPcmSampleLoader] Loaded all drum samples from %s, %d bytes used (%d bytes free, %f%%)\n", pcmPath.c_str(), ramPtr - baseRamAddr, g_pcmRamSize - (ramPtr - baseRamAddr), (ramPtr - baseRamAddr) * 100.0f / g_pcmRamSize);
 }

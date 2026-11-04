@@ -56,7 +56,13 @@ public:
     // Copy PCM RAM from `ram` into the core. Call after writing PCM data into
     // `ram` (registers are picked up automatically at the next block).
     void syncPcmMemory() {
-        for (std::uint32_t address = 0; address < kPcmMemorySize; address++) {
+        syncPcmMemory(0, kPcmMemorySize);
+    }
+
+    // Copy only [begin, end) of PCM RAM into the core.
+    void syncPcmMemory(std::uint32_t begin, std::uint32_t end) {
+        end = std::min<std::uint32_t>(end, kPcmMemorySize);
+        for (std::uint32_t address = begin; address < end; address++) {
             chip->engine.writePcmMemory(address, ram[address]);
         }
     }

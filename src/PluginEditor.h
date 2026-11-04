@@ -37,6 +37,7 @@ private:
     ui::VoiceStatusPanel voiceStatus;
     ui::MasterSection master;
     ui::SettingsOverlay settings;
+    ui::FocusRingOverlay focusRing { *this };
 
     int laidOutChips = 0;
 

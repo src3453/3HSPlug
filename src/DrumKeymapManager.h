@@ -18,6 +18,8 @@ public:
     // ドラムサンプル再生トリガー
     void triggerDrumSample(uint8_t midiChannel, uint8_t noteNumber, uint8_t velocity);
 
+    void clear() { keymapTable.clear(); }
+
     // GMドラム初期化
     void initializeGM();
 

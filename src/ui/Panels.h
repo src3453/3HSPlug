@@ -33,6 +33,9 @@ public:
     void update();
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
+    bool keyPressed(const juce::KeyPress&) override;
+    void focusGained(FocusChangeType) override;
+    void focusLost(FocusChangeType) override;
 
     void setSelectedChannel(int midiChannel) { selectedChannel = midiChannel; repaint(); }
     std::function<void(int midiChannel)> onChannelSelected;
@@ -48,6 +51,7 @@ private:
     juce::String gsText;
     bool showGsDots = false;
     bool showGsText = false;
+    bool showFocusRing = false; // キーボードでフォーカスしたときだけ
 };
 
 //==============================================================================
@@ -117,6 +121,26 @@ private:
     juce::TextButton gmResetButton { "GM Reset" };
     juce::TextButton panicButton { "All Notes Off" };
     juce::Label infoLabel;
+};
+
+//==============================================================================
+// 標準の部品（ボタン、コンボボックス、ノブ）にキーボードでフォーカスしたときのリング。
+// マウスのクリックでフォーカスしたときは出さない（:focus-visible と同じ考え方）。
+class FocusRingOverlay : public juce::Component, private juce::FocusChangeListener
+{
+public:
+    explicit FocusRingOverlay(juce::Component& root);
+    ~FocusRingOverlay() override;
+    void paint(juce::Graphics&) override;
+    void mouseDown(const juce::MouseEvent&) override;
+    void refresh(); // 対象が動いたり隠れたりしたときのためにタイマーから呼ぶ
+
+private:
+    void globalFocusChanged(juce::Component* focused) override;
+
+    juce::Component& root;
+    juce::Component::SafePointer<juce::Component> target;
+    juce::Rectangle<int> lastBounds;
 };
 
 } // namespace ui
