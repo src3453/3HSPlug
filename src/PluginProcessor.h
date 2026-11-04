@@ -7,6 +7,7 @@
 #include <chrono>
 #include <JuceHeader.h>
 #include "DrumKeymapManager.h"
+#include "PatchBankData.h"
 #include "s3hs_core/sound.cpp"
 
 #define USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY 1 // チャンネル割り当て戦略の切り替え（定義するとローリング戦略、未定義で従来の戦略）
@@ -163,6 +164,34 @@ public:
     // RAMダンプ取得（PCM, 1チップ目、0x000000～0x000FFF）
     std::vector<uint8_t> getRamDumpPCM() const;
 
+    // ---- UI用 ----
+    // マスター音量（dB、APVTSパラメータ）
+    static constexpr const char* masterVolumeParamId = "masterVolume";
+    static constexpr float masterVolumeMinDb = -60.0f; // この値は無音
+    static constexpr float masterVolumeMaxDb = 12.0f;
+    juce::AudioProcessorValueTreeState& getParameters() noexcept { return parameters; }
+
+    // 出力メーター（前回の読み取り以降のピークとRMS、リニア値）
+    struct MeterReading { float peak[2] = {0.0f, 0.0f}; float rms[2] = {0.0f, 0.0f}; };
+    MeterReading consumeMeterReading();
+
+    // MIDIチャンネル（1～16）のパッチ
+    struct PatchLocation {
+        int bank = 0;
+        int program = 0;
+        int availability = 0; // 2: 定義あり, 1: バンク0で代理発音, 0: デフォルトパッチ
+        bool modified = false; // JSONファイルの内容から変更されているか
+    };
+    PatchLocation getChannelPatchLocation(int midiChannel) const;
+    Patch getChannelPatch(int midiChannel) const; // 発音に使われるパッチのコピー
+    // チャンネルの現在のバンク/プログラムへ書き込み、発音中のボイスへ即座に反映する
+    void editChannelPatch(int midiChannel, const Patch& patch);
+    void revertChannelPatch(int midiChannel);
+    bool saveChannelPatchBank(int midiChannel, juce::String& message);
+    bool isDrumChannel(int midiChannel) const;
+    // パッチの内容が変わるたびに増える（UIの再読み込み用）
+    uint32_t getPatchRevision() const noexcept { return patchRevision.load(); }
+
     // GS Dot Matrix Data (64 bytes)
     std::array<uint8_t, 64> gsDotMatrixData{};
     std::atomic<bool> gsDotMatrixUpdated{false};
@@ -173,6 +202,18 @@ public:
     int64_t lastGSTextUpdateTick = std::numeric_limits<int64_t>::min(); // テキストディスプレイの最後の更新時刻（tick単位）
 
 private:
+    juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+    void applyPatchToActiveVoices(int bankNumber, int programNumber); // processLock保持中に呼ぶ
+    void updateDrumChannelMask();
+
+    std::atomic<float>* masterVolumeParam = nullptr;
+    juce::SmoothedValue<float> masterGain { 1.0f };
+    std::atomic<float> meterPeak[2] { {0.0f}, {0.0f} };
+    std::atomic<float> meterSumSquares[2] { {0.0f}, {0.0f} };
+    std::atomic<int> meterSampleCount { 0 };
+    std::atomic<uint32_t> patchRevision { 0 };
+    std::atomic<uint32_t> drumChannelMask { 1u << 9 }; // bit n = MIDIチャンネルn+1（CH10は常にドラム）
+
     void processBlockSegment(juce::AudioBuffer<float>& buffer,
                              juce::MidiBufferIterator midiBegin,
                              juce::MidiBufferIterator midiEnd);

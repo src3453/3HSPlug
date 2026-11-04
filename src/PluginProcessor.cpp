@@ -95,7 +95,9 @@ void _3HSPlugAudioProcessor::resetGM()
         }
     }
     gsDrumChannels.clear(); // GSドラムチャンネルをクリア
+    updateDrumChannelMask();
     resetPatchBanks(); // オーバーライドされたパッチをリセット
+    ++patchRevision;
 }
 
 std::vector<DrumPcmChannelDebugInfo> _3HSPlugAudioProcessor::getDrumPcmChannelInfoAll() const
@@ -145,11 +147,12 @@ _3HSPlugAudioProcessor::_3HSPlugAudioProcessor()
             .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
     #endif
         ),
-        parameters(*this, nullptr)
+        parameters(*this, nullptr, "PARAMS", createParameterLayout())
     #else
-        : parameters(*this, nullptr)
+        : parameters(*this, nullptr, "PARAMS", createParameterLayout())
     #endif
     {
+        masterVolumeParam = parameters.getRawParameterValue(masterVolumeParamId);
         pcmPath = getAssetDirectoryPath("3HSPLUG_PCM_PATH", pcmPath);
         patchJsonPath = getAssetDirectoryPath("3HSPLUG_PATCHES_PATH", patchJsonPath);
         // PCM RAM領域を1MB確保
@@ -290,6 +293,12 @@ void _3HSPlugAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     for (int chip = 0; chip < numChips; ++chip) {
         s3hsSounds[chip].initSound();
         s3hsSounds[chip].setSampleRate(static_cast<float>(sampleRate));
+    }
+
+    masterGain.reset(sampleRate, 0.03);
+    {
+        const float db = masterVolumeParam->load();
+        masterGain.setCurrentAndTargetValue(db <= masterVolumeMinDb ? 0.0f : juce::Decibels::decibelsToGain(db));
     }
 
     // DCオフセット除去フィルタの初期化
@@ -498,6 +507,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
             // パッチオーバーライド処理
             if (patchNumber >= 0 && patchNumber < 128 && bankNumber >= 0 && bankNumber < 128) {
                 setPatchOverride(bankNumber, patchNumber, relativeAddr, value);
+                ++patchRevision;
             }
         }
 
@@ -552,6 +562,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
             {
                 gmReset = true; // GSリセットもGMリセットとして扱う
                 gsDrumChannels.clear(); // GSドラムチャンネルをクリア
+                updateDrumChannelMask();
                 printf("[GS] GS Reset received, Drum channels cleared\n");
             }
         }
@@ -573,6 +584,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                 printf("[GS] part %d (MIDI CH%d) Map %d\n", part, midiCh, mm);
                 if (mm >= 1) { // GSm 拡張 : 1-2だけではなく 3-15もドラムマップとして扱う
                     gsDrumChannels.insert(midiCh);
+                    updateDrumChannelMask();
                     printf("[GS] MIDI CH%d set to Drum (MAP%d)\n", midiCh, mm);
                 }
             }
@@ -1529,6 +1541,34 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
         dcHighPassFilters[1].processSamples(right, buffer.getNumSamples());
     }
 
+    // マスター音量とメーター
+    {
+        const float targetDb = masterVolumeParam->load();
+        masterGain.setTargetValue(targetDb <= masterVolumeMinDb ? 0.0f : juce::Decibels::decibelsToGain(targetDb));
+        const int n = buffer.getNumSamples();
+        float peak[2] = {0.0f, 0.0f};
+        float sumSq[2] = {0.0f, 0.0f};
+        for (int i = 0; i < n; ++i) {
+            const float gain = masterGain.getNextValue();
+            left[i] *= gain;
+            peak[0] = std::max(peak[0], std::abs(left[i]));
+            sumSq[0] += left[i] * left[i];
+            if (right) {
+                right[i] *= gain;
+                peak[1] = std::max(peak[1], std::abs(right[i]));
+                sumSq[1] += right[i] * right[i];
+            }
+        }
+        if (!right) { peak[1] = peak[0]; sumSq[1] = sumSq[0]; }
+        for (int c = 0; c < 2; ++c) {
+            float prev = meterPeak[c].load();
+            while (peak[c] > prev && !meterPeak[c].compare_exchange_weak(prev, peak[c])) {}
+            float acc = meterSumSquares[c].load();
+            while (!meterSumSquares[c].compare_exchange_weak(acc, acc + sumSq[c])) {}
+        }
+        meterSampleCount.fetch_add(n);
+    }
+
     // This is the place where you'd normally do the guts of your plugin's
     // audio processing...
     // Make sure to reset the state if your inner loop is processing
@@ -1640,17 +1680,244 @@ juce::AudioProcessorEditor* _3HSPlugAudioProcessor::createEditor()
 }
 
 //==============================================================================
+namespace {
+juce::ValueTree patchToValueTree(const Patch& patch, int bank, int program)
+{
+    juce::ValueTree tree("Patch");
+    tree.setProperty("bank", bank, nullptr);
+    tree.setProperty("program", program, nullptr);
+    tree.setProperty("defined", patch.defined, nullptr);
+    tree.setProperty("modmode", static_cast<int>(patch.modmode), nullptr);
+    tree.setProperty("feedback", static_cast<int>(patch.feedback), nullptr);
+    tree.setProperty("fbDest", static_cast<int>(patch.fbDest), nullptr);
+    tree.setProperty("keyShift", static_cast<int>(patch.keyShift), nullptr);
+    for (const auto& op : patch.operators) {
+        juce::ValueTree opTree("Operator");
+        opTree.setProperty("frequency", static_cast<int>(op.frequency), nullptr);
+        opTree.setProperty("attack", static_cast<int>(op.attack), nullptr);
+        opTree.setProperty("decay", static_cast<int>(op.decay), nullptr);
+        opTree.setProperty("sustain", static_cast<int>(op.sustain), nullptr);
+        opTree.setProperty("release", static_cast<int>(op.release), nullptr);
+        opTree.setProperty("volume", static_cast<int>(op.volume), nullptr);
+        opTree.setProperty("waveform", static_cast<int>(op.waveform), nullptr);
+        tree.appendChild(opTree, nullptr);
+    }
+    return tree;
+}
+
+Patch patchFromValueTree(const juce::ValueTree& tree)
+{
+    auto byte = [](const juce::var& v, int lo, int hi) {
+        return static_cast<uint8_t>(juce::jlimit(lo, hi, static_cast<int>(v)));
+    };
+    Patch patch;
+    patch.defined = static_cast<bool>(tree.getProperty("defined", true));
+    patch.modmode = byte(tree.getProperty("modmode", 4), 0, 12);
+    patch.feedback = byte(tree.getProperty("feedback", 0x80), 0, 255);
+    patch.fbDest = byte(tree.getProperty("fbDest", 0), 0, 7);
+    patch.keyShift = static_cast<int8_t>(juce::jlimit(-128, 127, static_cast<int>(tree.getProperty("keyShift", 0))));
+    for (int i = 0; i < 8 && i < tree.getNumChildren(); ++i) {
+        const auto opTree = tree.getChild(i);
+        auto& op = patch.operators[static_cast<size_t>(i)];
+        op.frequency = static_cast<uint16_t>(juce::jlimit(0, 65535, static_cast<int>(opTree.getProperty("frequency", 0))));
+        op.attack = byte(opTree.getProperty("attack", 0), 0, 255);
+        op.decay = byte(opTree.getProperty("decay", 0), 0, 255);
+        op.sustain = byte(opTree.getProperty("sustain", 0), 0, 255);
+        op.release = byte(opTree.getProperty("release", 0), 0, 255);
+        op.volume = byte(opTree.getProperty("volume", 0), 0, 255);
+        op.waveform = byte(opTree.getProperty("waveform", 0), 0, 15);
+    }
+    return patch;
+}
+}
+
 void _3HSPlugAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    // You should use this method to store your parameters in the memory block.
-    // You could do that either as raw data, or use the XML or ValueTree classes
-    // as intermediaries to make it easy to save and load complex data.
+    juce::ValueTree state("S3HSPlugState");
+    state.setProperty("version", 1, nullptr);
+    {
+        juce::ScopedLock sl(processLock);
+        state.setProperty("numChips", numChips, nullptr);
+        state.setProperty("pcOverride", pcOverrideEnabled, nullptr);
+        state.setProperty("pcOverrideBank", pcOverrideBank, nullptr);
+        state.setProperty("pcOverrideProgram", pcOverrideProgram, nullptr);
+
+        // UIで編集したパッチ（JSONファイルの内容と異なるもの）だけを保存する
+        juce::ValueTree edited("EditedPatches");
+        for (int bank = 0; bank < MAX_BANKS; ++bank)
+            for (int prog = 0; prog < PATCH_BANK_SIZE; ++prog)
+                if (isUserPatchModified(bank, prog))
+                    edited.appendChild(patchToValueTree(PatchBanksOriginal[bank][prog], bank, prog), nullptr);
+        state.appendChild(edited, nullptr);
+    }
+    state.appendChild(parameters.copyState(), nullptr);
+
+    if (auto xml = state.createXml())
+        copyXmlToBinary(*xml, destData);
 }
 
 void _3HSPlugAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    // You should use this method to restore your parameters from this memory block,
-    // whose contents will have been created by the getStateInformation() call.
+    auto xml = getXmlFromBinary(data, sizeInBytes);
+    if (xml == nullptr)
+        return;
+    auto state = juce::ValueTree::fromXml(*xml);
+    if (!state.hasType("S3HSPlugState"))
+        return;
+
+    auto params = state.getChildWithName(parameters.state.getType());
+    if (params.isValid())
+        parameters.replaceState(params);
+
+    setNumChips(static_cast<int>(state.getProperty("numChips", numChips)));
+    setPcOverrideBank(static_cast<int>(state.getProperty("pcOverrideBank", pcOverrideBank)));
+    setPcOverrideProgram(static_cast<int>(state.getProperty("pcOverrideProgram", pcOverrideProgram)));
+    setPcOverrideEnabled(static_cast<bool>(state.getProperty("pcOverride", pcOverrideEnabled)));
+
+    juce::ScopedLock sl(processLock);
+    // いったんJSONファイルの内容に戻してから、保存されていた編集を適用する
+    PatchBanksOriginal = PatchBanksFile;
+    PatchBanks = PatchBanksFile;
+    for (const auto& child : state.getChildWithName("EditedPatches")) {
+        const int bank = child.getProperty("bank", -1);
+        const int prog = child.getProperty("program", -1);
+        if (bank < 0 || bank >= MAX_BANKS || prog < 0 || prog >= PATCH_BANK_SIZE)
+            continue;
+        const Patch patch = patchFromValueTree(child);
+        if (patch.defined) {
+            setUserPatch(bank, prog, patch);
+        } else {
+            PatchBanks[bank][prog].defined = false;
+            PatchBanksOriginal[bank][prog].defined = false;
+        }
+    }
+    ++patchRevision;
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout _3HSPlugAudioProcessor::createParameterLayout()
+{
+    juce::AudioProcessorValueTreeState::ParameterLayout layout;
+    juce::NormalisableRange<float> range(masterVolumeMinDb, masterVolumeMaxDb, 0.1f);
+    range.setSkewForCentre(-12.0f);
+    layout.add(std::make_unique<juce::AudioParameterFloat>(
+        juce::ParameterID { masterVolumeParamId, 1 }, "Master Volume", range, 0.0f,
+        juce::AudioParameterFloatAttributes()
+            .withLabel("dB")
+            .withStringFromValueFunction([](float v, int) {
+                return v <= masterVolumeMinDb ? juce::String("-inf") : juce::String(v, 1);
+            })));
+    return layout;
+}
+
+_3HSPlugAudioProcessor::MeterReading _3HSPlugAudioProcessor::consumeMeterReading()
+{
+    MeterReading reading;
+    const int count = meterSampleCount.exchange(0);
+    for (int c = 0; c < 2; ++c) {
+        reading.peak[c] = meterPeak[c].exchange(0.0f);
+        const float sumSq = meterSumSquares[c].exchange(0.0f);
+        reading.rms[c] = count > 0 ? std::sqrt(sumSq / static_cast<float>(count)) : 0.0f;
+    }
+    return reading;
+}
+
+void _3HSPlugAudioProcessor::updateDrumChannelMask()
+{
+    uint32_t mask = 1u << 9;
+    for (auto ch : gsDrumChannels)
+        if (ch >= 1 && ch <= 16)
+            mask |= 1u << (ch - 1);
+    drumChannelMask.store(mask);
+}
+
+bool _3HSPlugAudioProcessor::isDrumChannel(int midiChannel) const
+{
+    if (midiChannel < 1 || midiChannel > 16)
+        return false;
+    return ((drumChannelMask.load() >> (midiChannel - 1)) & 1u) != 0;
+}
+
+_3HSPlugAudioProcessor::PatchLocation _3HSPlugAudioProcessor::getChannelPatchLocation(int midiChannel) const
+{
+    PatchLocation location;
+    if (midiChannel < 1 || midiChannel > 16)
+        return location;
+    location.bank = currentBank[midiChannel - 1];
+    location.program = currentProgram[midiChannel - 1];
+    location.availability = getPatchAvailability(location.bank, location.program);
+    location.modified = isUserPatchModified(location.bank, location.program);
+    return location;
+}
+
+Patch _3HSPlugAudioProcessor::getChannelPatch(int midiChannel) const
+{
+    juce::ScopedLock sl(processLock);
+    const auto location = getChannelPatchLocation(midiChannel);
+    return getEffectivePatch(location.bank, location.program);
+}
+
+void _3HSPlugAudioProcessor::editChannelPatch(int midiChannel, const Patch& patch)
+{
+    if (midiChannel < 1 || midiChannel > 16)
+        return;
+    juce::ScopedLock sl(processLock);
+    const int bank = currentBank[midiChannel - 1];
+    const int prog = currentProgram[midiChannel - 1];
+    setUserPatch(bank, prog, patch);
+    applyPatchToActiveVoices(bank, prog);
+    ++patchRevision;
+}
+
+void _3HSPlugAudioProcessor::revertChannelPatch(int midiChannel)
+{
+    if (midiChannel < 1 || midiChannel > 16)
+        return;
+    juce::ScopedLock sl(processLock);
+    const int bank = currentBank[midiChannel - 1];
+    const int prog = currentProgram[midiChannel - 1];
+    revertUserPatch(bank, prog);
+    applyPatchToActiveVoices(bank, prog);
+    ++patchRevision;
+}
+
+bool _3HSPlugAudioProcessor::saveChannelPatchBank(int midiChannel, juce::String& message)
+{
+    if (midiChannel < 1 || midiChannel > 16)
+        return false;
+    juce::ScopedLock sl(processLock);
+    const int bank = currentBank[midiChannel - 1];
+    const auto path = juce::File(patchJsonPath).getChildFile(juce::String(bank) + ".json");
+    const bool ok = saveUserPatchBank(path.getFullPathName().toStdString(), bank);
+    message = (ok ? "Saved " : "Failed to save ") + path.getFullPathName();
+    ++patchRevision;
+    return ok;
+}
+
+// 指定パッチを使っている発音中のボイスへ、周波数・パン・Gate以外のレジスタを書き直す
+void _3HSPlugAudioProcessor::applyPatchToActiveVoices(int bankNumber, int programNumber)
+{
+    const int total = std::min(numChips * numVoices, static_cast<int>(voiceSlots.size()));
+    for (int flat = 0; flat < total; ++flat) {
+        const auto& v = voiceSlots[flat];
+        if (!v.inUse || v.midiChannel < 1 || v.midiChannel > 16)
+            continue;
+        const int ch = v.midiChannel;
+        auto& effective = getEffectivePatch(currentBank[ch - 1], currentProgram[ch - 1]);
+        if (&effective != &PatchBanks[bankNumber][programNumber])
+            continue;
+        const int chip = flat / numVoices;
+        const int vIdx = flat % numVoices;
+        const int baseAddr = 0x400000 + 0x40 * vIdx;
+        auto patch = effective.applyMutation(DoMutation(channelCC[ch]));
+        const auto regs = patch.toRegValues(v.volume);
+        auto& sound = s3hsSounds[chip];
+        for (int i = 0x02; i < 0x40; ++i) {
+            if (i == 0x1D || i == 0x1E) // パンとGateは触らない
+                continue;
+            sound.ram_poke(sound.ram, baseAddr + i, regs[static_cast<size_t>(i)]);
+        }
+        sound.ram_poke(sound.ram, 0x4003C0 + vIdx, patch.fbDest);
+    }
 }
 
 uint64_t _3HSPlugAudioProcessor::getCurrentTick() const

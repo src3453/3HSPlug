@@ -45,6 +45,8 @@ juce_generate_juce_header(3HSPlug)
 target_sources(3HSPlug
     PRIVATE
         src/PluginEditor.cpp
+        src/ui/Panels.cpp
+        src/ui/PatchEditorPanel.cpp
         src/PluginProcessor.cpp
         src/PatchBankData.cpp
         src/DrumKeymapManager.cpp

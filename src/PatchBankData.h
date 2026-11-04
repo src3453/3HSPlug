@@ -55,9 +55,15 @@ struct Patch {
     }
 };
 
+bool patchesEqual(const Patch& a, const Patch& b); // 意味のあるパラメータだけを比較する
+
 // バンクごとのパッチ定義（GSバンク対応）
+// PatchBanks:         発音に使う現在の内容（SysExオーバーライドを含む）
+// PatchBanksOriginal: GMリセットで戻す基準（JSONの内容＋UIでの編集）
+// PatchBanksFile:     JSONファイルから読み込んだままの内容（UIの「元に戻す」の基準）
 extern std::vector<std::vector<Patch>> PatchBanks;
 extern std::vector<std::vector<Patch>> PatchBanksOriginal;
+extern std::vector<std::vector<Patch>> PatchBanksFile;
 extern Patch defaultPatch; // デフォルトパッチ
 
 void initializePatchBanks(const std::string& patchesDir = "patches/");
@@ -65,6 +71,13 @@ bool loadPatchBankFromYAML(const std::string& filePath);
 bool loadPatchBankFromJSON(const std::string& filePath, int bankNumber = 0);
 bool savePatchBankToYAML(const std::string& filePath);
 bool savePatchBankToJSON(const std::string& filePath, int bankNumber = 0);
+bool savePatchBankToJSON(const std::string& filePath, const std::vector<Patch>& bank);
+
+// UIでの編集（GMリセット後も残る）
+void setUserPatch(int bankNumber, int programNumber, const Patch& patch);
+void revertUserPatch(int bankNumber, int programNumber); // JSONファイルの内容に戻す
+bool isUserPatchModified(int bankNumber, int programNumber); // JSONファイルの内容と異なるか
+bool saveUserPatchBank(const std::string& filePath, int bankNumber); // 基準の内容を保存し、ファイル側の基準を更新する
 void exportCurrentPatchBankToJSON(); // 一時的な関数: 現在のPatchBankをJSONに書き出す
 Patch& getPatchOrDefault(int bankNumber, int programNumber);
 void setPatchOverride(int bankNumber, int patchNumber, int relativeAddr, int value);
