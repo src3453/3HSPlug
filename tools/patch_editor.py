@@ -186,7 +186,7 @@ GM_INSTRUMENT_NAMES = {
         patchNumber >= 0 && patchNumber < PATCH_BANK_SIZE) {
         Patch& patch = PatchBanks[bankNumber][patchNumber];
         // オーバーライド処理
-        if (relativeAddr >= 0 && relativeAddr < 0x41) {
+        if (relativeAddr >= 0 && relativeAddr < 0x42) {
             if (relativeAddr >= 0x02 && relativeAddr <= 0x0F)
             {
                 if ((relativeAddr & 1) == 0) {
@@ -234,12 +234,23 @@ GM_INSTRUMENT_NAMES = {
                     break;
                 }
             }
+            if (relativeAddr == 0x41) {
+                patch.fbDest = static_cast<uint8_t>(std::clamp(value, 0, 7));
+            }
             if (relativeAddr == 0x40) {
                 patch.keyShift = static_cast<int8_t>(value); // キーシフトはint8_tなのでキャスト
             }
         }
     }
 }"""
+
+FB_DEST_CHOICES = [f"OP{i + 1}" for i in range(8)]  # fbDest 0..7
+
+def clamp_fb_dest(value):
+    try:
+        return min(max(int(value), 0), 7)
+    except (TypeError, ValueError):
+        return 0
 
 def reinterpret_signed_byte(value):
     return value - 256 if value > 127 else value
@@ -255,12 +266,13 @@ class PatchEditor:
         
         self.setup_ui()
 
-        # 3HSPlug Patch Override (SysEx: F0 7D 33 48 00 <bank#(00~7F)> <patch#(00~7F)> <relative addr(00~3F)> <data MSB(00~0F)> <data LSB(00~0F)> <checksum> F7)
+        # 3HSPlug Patch Override (SysEx: F0 7D 33 48 00 <bank#(00~7F)> <patch#(00~7F)> <relative addr(00~41)> <data MSB(00~0F)> <data LSB(00~0F)> <checksum> F7)
+        # relative addr: 00~3F はレジスタと同じ並び、40 はキーシフト、41 はフィードバック先（0: OP1 ～ 7: OP8）
     def create_patch_override_sysex(self, bank_num, patch_num, relative_addr, data):
         sysex = [0x7D, 0x33, 0x48, 0x00,
                 bank_num & 0x7F,
                 patch_num & 0x7F,
-                relative_addr & 0x3F,
+                relative_addr & 0x7F,
                 (data & 0xF0) >> 4,
                 data & 0x0F]
         checksum = (-(sum(sysex) & 0x7F)) & 0x7F
@@ -270,7 +282,7 @@ class PatchEditor:
 
     def send_sysex_message(self, patchnum):
         sysexes = []
-        for addr in range(0x00, 0x41):
+        for addr in range(0x00, 0x42):
                 if 0x02 <= addr <= 0x0F:  # OP2-8 frequency MSB/LSB
                     op_index = addr // 2
                     try:
@@ -330,6 +342,9 @@ class PatchEditor:
                 if addr == 0x40:  # Key Shift
                     keyshift = self.current_patch.get("keyShift", 0) & 0xFF
                     sysexes.append(self.create_patch_override_sysex(0, patchnum, addr, keyshift))
+                if addr == 0x41:  # Feedback destination
+                    fb_dest = clamp_fb_dest(self.current_patch.get("fbDest", 0))
+                    sysexes.append(self.create_patch_override_sysex(0, patchnum, addr, fb_dest))
                 else:  # その他のアドレスはスキップ
                     continue
         for sysex in sysexes:
@@ -520,12 +535,20 @@ class PatchEditor:
         feedback_label.grid(row=2, column=2, padx=0, pady=2, sticky=tk.W)
         self.feedback_var.trace_add('write', lambda *args, lbl=feedback_label, v=self.feedback_var: lbl.config(text=f"({int(v.get())-128})"))
         
+        # フィードバック先（0: OP1 ～ 7: OP8）
+        ttk.Label(info_frame, text="Feedback destination:").grid(row=3, column=0, sticky=tk.W, padx=5, pady=2)
+        self.fbdest_var = tk.StringVar(value=FB_DEST_CHOICES[0])
+        self.fbdest_combo = ttk.Combobox(info_frame, textvariable=self.fbdest_var, values=FB_DEST_CHOICES,
+                                         state="readonly", width=8)
+        self.fbdest_combo.grid(row=3, column=1, padx=5, pady=2)
+        self.fbdest_combo.bind('<<ComboboxSelected>>', self.on_value_change)
+
         # キーシフト
-        ttk.Label(info_frame, text="Key shift:").grid(row=3, column=0, sticky=tk.W, padx=5, pady=2)
+        ttk.Label(info_frame, text="Key shift:").grid(row=4, column=0, sticky=tk.W, padx=5, pady=2)
         self.keyshift_var = tk.IntVar()
         self.keyshift_spinbox = ttk.Spinbox(info_frame, from_=-96, to=96, textvariable=self.keyshift_var,
                                            command=self.on_value_change, width=10)
-        self.keyshift_spinbox.grid(row=3, column=1, padx=5, pady=2)
+        self.keyshift_spinbox.grid(row=4, column=1, padx=5, pady=2)
         self.keyshift_spinbox.bind('<Return>', self.on_value_change)
         self.keyshift_var.trace_add('write', self.on_value_change)
         
@@ -540,7 +563,7 @@ class PatchEditor:
         ttk.Label(op_select_frame, text="Operators:").pack(side=tk.LEFT)
         self.operator_var = tk.IntVar(value=0)
         for i in range(8):
-            ttk.Radiobutton(op_select_frame, text=f"OP{i}", variable=self.operator_var, 
+            ttk.Radiobutton(op_select_frame, text=f"OP{i + 1}", variable=self.operator_var, 
                            value=i, command=self.on_operator_select).pack(side=tk.LEFT, padx=5)
         
         # オペレーターパラメーター
@@ -694,6 +717,7 @@ class PatchEditor:
         self.modmode_var.set(self.current_patch.get("modmode", 4))
         self.feedback_var.set(self.current_patch.get("feedback", 128))
         self.keyshift_var.set(self.current_patch.get("keyShift", 0))
+        self.fbdest_var.set(FB_DEST_CHOICES[clamp_fb_dest(self.current_patch.get("fbDest", 0))])
         
         # 楽器名を更新
         program = self.program_var.get()
@@ -748,6 +772,8 @@ class PatchEditor:
         self.current_patch["modmode"] = self.modmode_var.get()
         self.current_patch["feedback"] = self.feedback_var.get()
         self.current_patch["keyShift"] = self.keyshift_var.get()
+        if self.fbdest_var.get() in FB_DEST_CHOICES:
+            self.current_patch["fbDest"] = FB_DEST_CHOICES.index(self.fbdest_var.get())
         
         # 楽器名を更新
         program = self.program_var.get()
@@ -800,6 +826,7 @@ class PatchEditor:
             "program": new_program,
             "modmode": 4,
             "feedback": 128,
+            "fbDest": 0,
             "keyShift": 0,
             "operators": [
                 {"frequency": 0, "attack": 0, "decay": 0, "sustain": 0, "release": 0, "volume": 0, "waveform": 0}
@@ -831,6 +858,7 @@ class PatchEditor:
             # UIをクリア
             for var in [self.program_var, self.modmode_var, self.feedback_var, self.keyshift_var]:
                 var.set(0)
+            self.fbdest_var.set(FB_DEST_CHOICES[0])
             for var in self.operator_vars.values():
                 var.set(0)
             self.instrument_label.config(text="")
