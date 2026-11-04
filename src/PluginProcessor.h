@@ -174,6 +174,18 @@ public:
     };
     // Keeps the previous UI frame if audio processing owns the lock.
     bool readChannelStatus(std::array<ChannelStatus, 16>& destination) const;
+    // ---- スコープ用（チャンネル別波形キャプチャ。ロックフリー） ----
+    // フラット番号 = チップ * 12 + チャンネル（FM 0..7, PCM 8..11）。
+    // オーディオスレッドは「表示中の範囲」だけリングバッファへ書き込む（wait-free、確保なし）。
+    static constexpr int scopeRingSize = 4096;            // 2のべき乗
+    static constexpr int scopeChannelsPerChip = 12;
+    static constexpr int scopeMaxChannels = 16 * scopeChannelsPerChip;
+    // 取得対象を [first, first+count) にする。count=0 で取得停止（メッセージスレッドから呼ぶ）
+    void setScopeRange(int first, int count) noexcept;
+    // 直近 count サンプルを dest へコピーする（古い順、-1..1 に正規化済み）。
+    // 取得開始後にまだ count サンプル溜まっていなければ false。
+    bool readScopeWindow(int flatChannel, float* dest, int count) const noexcept;
+
     // マスター音量（dB、APVTSパラメータ）
     static constexpr const char* masterVolumeParamId = "masterVolume";
     static constexpr float masterVolumeMinDb = -60.0f; // この値は無音
@@ -247,6 +259,14 @@ private:
     std::atomic<uint32_t> drumKitRevision { 0 };
     juce::SpinLock uiMidiLock;
     juce::MidiBuffer uiMidi; // 試聴用
+
+    // スコープのキャプチャ状態（リングバッファは起動時に一度だけ確保）
+    std::unique_ptr<float[]> scopeRing { new float[static_cast<size_t>(scopeMaxChannels) * scopeRingSize]() };
+    std::array<std::atomic<uint32_t>, scopeMaxChannels> scopeWritePos {};
+    std::array<std::atomic<uint32_t>, scopeMaxChannels> scopeFilled {}; // scopeRingSizeで飽和
+    std::atomic<int> scopeFirst { 0 }, scopeCount { 0 };
+    int scopeAudioFirst = 0, scopeAudioCount = 0; // オーディオスレッド側の前回値
+    void captureScope(int chip, const std::vector<std::vector<std::vector<float>>>& frames, size_t length) noexcept;
 
     std::atomic<float>* masterVolumeParam = nullptr;
     juce::SmoothedValue<float> masterGain { 1.0f };
