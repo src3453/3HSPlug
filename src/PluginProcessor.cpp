@@ -1555,6 +1555,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
     std::vector<std::vector<std::vector<std::vector<float>>>> allFrames(numChips);
     for (int chip = 0; chip < numChips; ++chip) {
         allFrames[chip] = s3hsSounds[chip].AudioCallBack(buffer.getNumSamples());
+        captureScope(chip, allFrames[chip], static_cast<size_t>(buffer.getNumSamples()));
     }
     auto* left = buffer.getWritePointer(0);
     auto* right = buffer.getNumChannels() > 1 ? buffer.getWritePointer(1) : nullptr;
@@ -1667,6 +1668,59 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
     
     lastProcessTime = processEndTime;
 }
+void _3HSPlugAudioProcessor::setScopeRange(int first, int count) noexcept
+{
+    scopeFirst.store(juce::jlimit(0, scopeMaxChannels, first), std::memory_order_relaxed);
+    scopeCount.store(juce::jlimit(0, scopeMaxChannels, count), std::memory_order_release);
+}
+
+// オーディオスレッド: 表示中のチャンネルだけを、L/Rの平均としてリングへ書く
+void _3HSPlugAudioProcessor::captureScope(int chip, const std::vector<std::vector<std::vector<float>>>& frames, size_t length) noexcept
+{
+    const int count = scopeCount.load(std::memory_order_acquire);
+    const int first = scopeFirst.load(std::memory_order_relaxed);
+    if (chip == 0 && (count != scopeAudioCount || first != scopeAudioFirst)) {
+        // 範囲が変わった: 古いリング内容を使わないよう、溜まり具合をリセット
+        for (int i = 0; i < scopeMaxChannels; ++i)
+            scopeFilled[static_cast<size_t>(i)].store(0, std::memory_order_relaxed);
+        scopeAudioCount = count;
+        scopeAudioFirst = first;
+    }
+    if (count <= 0 || frames.size() < 2) return;
+    constexpr uint32_t mask = scopeRingSize - 1;
+    constexpr float scale = 0.5f / 32768.0f;
+    for (int ch = 0; ch < scopeChannelsPerChip; ++ch) {
+        const int flat = chip * scopeChannelsPerChip + ch;
+        if (flat < first || flat >= first + count || flat >= scopeMaxChannels) continue;
+        if (static_cast<size_t>(ch) >= frames[0].size()) continue;
+        const float* l = frames[0][static_cast<size_t>(ch)].data();
+        const float* r = frames[1][static_cast<size_t>(ch)].data();
+        float* ring = scopeRing.get() + static_cast<size_t>(flat) * scopeRingSize;
+        auto& wp = scopeWritePos[static_cast<size_t>(flat)];
+        uint32_t pos = wp.load(std::memory_order_relaxed);
+        for (size_t i = 0; i < length; ++i)
+            ring[(pos + static_cast<uint32_t>(i)) & mask] = (l[i] + r[i]) * scale;
+        wp.store(pos + static_cast<uint32_t>(length), std::memory_order_release);
+        auto& filled = scopeFilled[static_cast<size_t>(flat)];
+        filled.store(static_cast<uint32_t>(juce::jmin<size_t>(scopeRingSize, filled.load(std::memory_order_relaxed) + length)),
+                     std::memory_order_release);
+    }
+}
+
+bool _3HSPlugAudioProcessor::readScopeWindow(int flat, float* dest, int count) const noexcept
+{
+    if (flat < 0 || flat >= scopeMaxChannels || count <= 0 || count > scopeRingSize) return false;
+    const auto f = static_cast<size_t>(flat);
+    if (scopeFilled[f].load(std::memory_order_acquire) < static_cast<uint32_t>(count)) return false;
+    constexpr uint32_t mask = scopeRingSize - 1;
+    const uint32_t end = scopeWritePos[f].load(std::memory_order_acquire);
+    const float* ring = scopeRing.get() + f * scopeRingSize;
+    const uint32_t start = end - static_cast<uint32_t>(count);
+    for (int i = 0; i < count; ++i)
+        dest[i] = ring[(start + static_cast<uint32_t>(i)) & mask]; // 読み取り中の上書きは表示用途なので許容
+    return true;
+}
+
 std::vector<std::vector<float>> _3HSPlugAudioProcessor::getChipAudioDataL(int chip) const
 {
     juce::ScopedLock sl(processLock);
