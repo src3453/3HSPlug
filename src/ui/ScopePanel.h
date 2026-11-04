@@ -35,7 +35,9 @@ private:
     _3HSPlugAudioProcessor& processor;
     juce::TextButton prevButton { "<" }, nextButton { ">" };
     juce::Label pageLabel, gainLabel;
-    juce::ComboBox gainBox;
+    juce::ComboBox gainBox, fpsBox, dcBox;
+    juce::Label fpsLabel, dcLabel;
+    bool removeDc = false;
 
     int page = 0;
     bool wasShowing = false;

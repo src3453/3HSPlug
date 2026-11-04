@@ -1,11 +1,15 @@
 #include "ScopePanel.h"
 #include "ScopeTrigger.h"
+#include "UserSettings.h"
 #include <cstdlib>
 #include <cstring>
 
 namespace ui {
 namespace {
 constexpr int headerHeight = 36;
+constexpr int fpsChoices[] { 10, 15, 20, 30, 60, 120 };
+constexpr const char* kFpsKey = "scopeFps";
+constexpr const char* kDcKey = "scopeDcRemoval"; // 0 = なし, 1 = 平均値ベース
 
 // 1ピクセルを書く（範囲外は無視）。コンポーネントの背景は透明なので、不透明な色をそのまま書き込む。
 struct Canvas {
@@ -72,7 +76,44 @@ ScopePanel::ScopePanel(_3HSPlugAudioProcessor& p) : processor(p)
         repaint();
     };
 
-    startTimerHz(30);
+    auto setupLabel = [this](juce::Label& l, const char* text) {
+        addAndMakeVisible(l);
+        l.setText(text, juce::dontSendNotification);
+        setLabelFont(l, type::small);
+        l.setColour(juce::Label::textColourId, colours::textDim);
+        l.setJustificationType(juce::Justification::centredRight);
+    };
+    setupLabel(fpsLabel, "FPS");
+    setupLabel(dcLabel, "DC");
+
+    addAndMakeVisible(fpsBox);
+    const int savedFps = ui::userSettings().getIntValue(kFpsKey, 30);
+    int fpsId = 4; // 30
+    for (int i = 0; i < static_cast<int>(std::size(fpsChoices)); ++i) {
+        fpsBox.addItem(juce::String(fpsChoices[i]), i + 1);
+        if (fpsChoices[i] == savedFps) fpsId = i + 1;
+    }
+    fpsBox.setSelectedId(fpsId, juce::dontSendNotification);
+    fpsBox.onChange = [this] {
+        const int fps = fpsChoices[juce::jlimit(1, static_cast<int>(std::size(fpsChoices)), fpsBox.getSelectedId()) - 1];
+        startTimerHz(fps);
+        ui::userSettings().setValue(kFpsKey, fps);
+        ui::userSettings().saveIfNeeded();
+    };
+
+    addAndMakeVisible(dcBox);
+    dcBox.addItem("Off", 1);
+    dcBox.addItem("Mean", 2);
+    removeDc = ui::userSettings().getIntValue(kDcKey, 0) == 1;
+    dcBox.setSelectedId(removeDc ? 2 : 1, juce::dontSendNotification);
+    dcBox.onChange = [this] {
+        removeDc = dcBox.getSelectedId() == 2;
+        for (auto& c : cells) c.valid = false; // 次の取得で作り直す
+        ui::userSettings().setValue(kDcKey, removeDc ? 1 : 0);
+        ui::userSettings().saveIfNeeded();
+    };
+
+    startTimerHz(fpsChoices[fpsId - 1]);
 }
 
 ScopePanel::~ScopePanel()
@@ -105,9 +146,14 @@ void ScopePanel::resized()
 {
     auto area = getLocalBounds().reduced(space::sm);
     auto bar = area.removeFromTop(headerHeight - space::sm);
-    auto right = bar.removeFromRight(160);
-    gainBox.setBounds(right.removeFromRight(100).reduced(0, 2));
-    gainLabel.setBounds(right);
+    auto right = bar.removeFromRight(360);
+    auto place = [&right](juce::Label& l, juce::ComboBox& b, int boxW) {
+        b.setBounds(right.removeFromRight(boxW).reduced(0, 2));
+        l.setBounds(right.removeFromRight(40));
+    };
+    place(dcLabel, dcBox, 80);
+    place(fpsLabel, fpsBox, 70);
+    place(gainLabel, gainBox, 90);
     prevButton.setBounds(bar.removeFromLeft(36).reduced(0, 2));
     pageLabel.setBounds(bar.removeFromLeft(210));
     nextButton.setBounds(bar.removeFromLeft(36).reduced(0, 2));
@@ -167,6 +213,12 @@ void ScopePanel::timerCallback()
         if (!ok) {
             if (c.valid) { c.valid = false; changed = true; }
             continue;
+        }
+        if (removeDc) { // 平均値ベースのDC除去（トリガー判定にも効く）
+            double sum = 0.0;
+            for (float v : c.raw) sum += v;
+            const float mean = static_cast<float>(sum / captureSamples);
+            for (float& v : c.raw) v -= mean;
         }
         size_t count = 0;
         const size_t start = findScopeTrigger(c.raw.data(), captureSamples, count);
