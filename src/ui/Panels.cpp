@@ -1,4 +1,5 @@
 #include "Panels.h"
+#include "UIScale.h"
 
 #ifndef BUILD_DATE
 #define BUILD_DATE __DATE__ " " __TIME__
@@ -497,6 +498,16 @@ SettingsOverlay::SettingsOverlay(_3HSPlugAudioProcessor& p) : processor(p)
     };
     addAndMakeVisible(fontBox);
 
+    scaleLabel.setText("UI scale", juce::dontSendNotification);
+    setLabelFont(scaleLabel, type::body);
+    addAndMakeVisible(scaleLabel);
+    for (int percent : scalePercentages)
+        scaleBox.addItem(juce::String(percent) + "%", percent);
+    scaleBox.setSelectedId(currentUIScalePercent(), juce::dontSendNotification);
+    scaleBox.setTooltip("Saved for this computer and used by every 3HSPlug window");
+    scaleBox.onChange = [this] { setUIScalePercent(scaleBox.getSelectedId()); };
+    addAndMakeVisible(scaleBox);
+
     themeLabel.setText("Theme", juce::dontSendNotification);
     setLabelFont(themeLabel, type::body);
     addAndMakeVisible(themeLabel);
@@ -613,6 +624,7 @@ void SettingsOverlay::reloadThemeList()
 void SettingsOverlay::lookAndFeelChanged()
 {
     infoLabel.setColour(juce::Label::textColourId, colours::textDim);
+    scaleBox.setSelectedId(currentUIScalePercent(), juce::dontSendNotification);
 }
 
 void SettingsOverlay::open()
@@ -620,6 +632,7 @@ void SettingsOverlay::open()
     reloadThemeList();
     numChipsBox.setSelectedId(processor.getNumChips(), juce::dontSendNotification);
     fontBox.setSelectedId(static_cast<int>(currentFontChoice()) + 1, juce::dontSendNotification);
+    scaleBox.setSelectedId(currentUIScalePercent(), juce::dontSendNotification);
     pcOverrideToggle.setToggleState(processor.isPcOverrideEnabled(), juce::dontSendNotification);
     pcBankSlider.setValue(processor.getPcOverrideBank(), juce::dontSendNotification);
     pcProgramSlider.setValue(processor.getPcOverrideProgram(), juce::dontSendNotification);
@@ -659,7 +672,7 @@ void SettingsOverlay::update()
 
 juce::Rectangle<int> SettingsOverlay::panelBounds() const
 {
-    return getLocalBounds().withSizeKeepingCentre(juce::jmin(560, getWidth() - 40), juce::jmin(660, getHeight() - 40));
+    return getLocalBounds().withSizeKeepingCentre(juce::jmin(560, getWidth() - 40), juce::jmin(700, getHeight() - 40));
 }
 
 void SettingsOverlay::paint(juce::Graphics& g)
@@ -727,6 +740,11 @@ void SettingsOverlay::resized()
     themeBox.setBounds(row.removeFromLeft(240));
     row.removeFromLeft(space::sm);
     themesFolderButton.setBounds(row.removeFromLeft(130));
+
+    area.removeFromTop(space::xs);
+    row = area.removeFromTop(space::control);
+    scaleLabel.setBounds(row.removeFromLeft(140));
+    scaleBox.setBounds(row.removeFromLeft(240));
 
     area.removeFromTop(space::xl + 6);
     row = area.removeFromTop(space::control);
