@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(juce_cmake_template VERSION 0.0.1)
+project(juce_cmake_template VERSION 1.1.0)
 
 enable_language(CXX)
 set(CMAKE_CXX_STANDARD 17)
@@ -26,6 +26,15 @@ add_subdirectory(lib/JUCE)
 
 set (BUILD_DATE "$<IF:$<CONFIG:Debug>,$<TIMESTAMP:%Y-%m-%d %H:%M:%S>,$<DATE:%Y-%m-%d %H:%M:%S>>>")
 configure_file(src/config.h.in config.h @ONLY)
+
+# Version shown in the title bar: project(VERSION) + short git hash (if available).
+set(THREEHS_GIT_HASH "")
+find_package(Git QUIET)
+if(GIT_FOUND)
+    execute_process(COMMAND "${GIT_EXECUTABLE}" rev-parse --short=7 HEAD
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        OUTPUT_VARIABLE THREEHS_GIT_HASH OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+endif()
 
 juce_add_plugin(3HSPlug
 
@@ -87,7 +96,9 @@ target_compile_definitions(3HSPlug
     PUBLIC
         JUCE_WEB_BROWSER=0
         JUCE_USE_CURL=0
-        JUCE_VST3_CAN_REPLACE_VST2=0)
+        JUCE_VST3_CAN_REPLACE_VST2=0
+        THREEHS_VERSION="${PROJECT_VERSION}"
+        THREEHS_GIT_HASH="${THREEHS_GIT_HASH}")
 
 target_link_libraries(3HSPlug
     PRIVATE

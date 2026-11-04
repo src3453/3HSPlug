@@ -1,6 +1,13 @@
 #include "Panels.h"
 #include "UIScale.h"
 
+#ifndef THREEHS_VERSION
+#define THREEHS_VERSION "0.0.0"
+#endif
+#ifndef THREEHS_GIT_HASH
+#define THREEHS_GIT_HASH ""
+#endif
+
 #ifndef BUILD_DATE
 #define BUILD_DATE __DATE__ " " __TIME__
 #endif
@@ -44,6 +51,9 @@ void TitleBar::paint(juce::Graphics& g)
     g.setColour(colours::text);
     g.setFont(font(type::display, true));
     const juce::String logo = "3HSPlug";
+    juce::String version = juce::String("v") + THREEHS_VERSION;
+    if (juce::String(THREEHS_GIT_HASH).isNotEmpty())
+        version << " (" << THREEHS_GIT_HASH << ")";
     const int logoW = juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), logo) + 4;
     g.drawText(logo, text.removeFromLeft(logoW), juce::Justification::centredLeft);
     text.removeFromLeft(12);
@@ -55,7 +65,7 @@ void TitleBar::paint(juce::Graphics& g)
                juce::Justification::bottomLeft);
     g.setColour(colours::textDim);
     g.setFont(font(type::caption));
-    g.drawText("by src3453, built " BUILD_DATE, sub.withTrimmedBottom(4), juce::Justification::topLeft);
+    g.drawText("by src3453, " + version + ", built " BUILD_DATE, sub.withTrimmedBottom(4), juce::Justification::topLeft);
 }
 
 void TitleBar::resized()
