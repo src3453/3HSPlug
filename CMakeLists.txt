@@ -48,6 +48,7 @@ target_sources(3HSPlug
         src/ui/Panels.cpp
         src/ui/PatchEditorPanel.cpp
         src/ui/DrumKitPanel.cpp
+        src/ui/AlgorithmDiagram.cpp
         src/PluginProcessor.cpp
         src/PatchBankData.cpp
         src/DrumKeymapManager.cpp

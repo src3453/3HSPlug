@@ -28,8 +28,8 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor(_3HSPlugAudioProcesso
 
     laidOutChips = audioProcessor.getNumChips();
     setResizable(true, true);
-    setResizeLimits(1000, 760, 2560, 1600);
-    setSize(1200, 880);
+    setResizeLimits(1000, 800, 2560, 1600);
+    setSize(1200, 920);
     startTimerHz(60);
 }
 

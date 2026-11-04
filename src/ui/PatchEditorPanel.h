@@ -5,6 +5,7 @@
 #include "../PluginProcessor.h"
 #include "Theme.h"
 #include "DrumKitPanel.h"
+#include "AlgorithmDiagram.h"
 
 namespace ui {
 
@@ -71,7 +72,7 @@ private:
     juce::Rectangle<int> globalArea() const;
     juce::Rectangle<int> operatorsArea() const;
 
-    static constexpr int kGlobalHeight = 2 * space::control + space::xs;
+    static constexpr int kGlobalHeight = 3 * space::control + 2 * space::xs; // 3段: 名前と状態 / 経路図 / ボタン
     static constexpr int kOpGap = 2 * space::md;
 
     _3HSPlugAudioProcessor& processor;
@@ -85,6 +86,7 @@ private:
     juce::ComboBox channelBox;
     juce::ComboBox modeBox;
     juce::ComboBox fbDestBox;
+    AlgorithmDiagram diagram;
     Knob feedback { "Feedback" };
     Knob keyShift { "Key shift" };
     juce::TextButton revertButton { "Revert" };
