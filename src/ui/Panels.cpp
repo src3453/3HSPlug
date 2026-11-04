@@ -504,10 +504,54 @@ SettingsOverlay::SettingsOverlay(_3HSPlugAudioProcessor& p) : processor(p)
     addAndMakeVisible(gmResetButton);
     addAndMakeVisible(panicButton);
 
+    pcmFolderButton.setTooltip("Load drum samples from a folder of <note>.wav files");
+    pcmFolderButton.onClick = [this] { chooseAssetFolder(true); };
+    patchFolderButton.setTooltip("Load patch banks from a folder of <bank>.json files");
+    patchFolderButton.onClick = [this] { chooseAssetFolder(false); };
+    addAndMakeVisible(pcmFolderButton);
+    addAndMakeVisible(patchFolderButton);
+
     infoLabel.setFont(monoFont(type::small));
     infoLabel.setJustificationType(juce::Justification::topLeft);
     infoLabel.setColour(juce::Label::textColourId, colours::textDim);
     addAndMakeVisible(infoLabel);
+}
+
+void SettingsOverlay::chooseAssetFolder(bool pcm)
+{
+    const juce::File current(pcm ? processor.getPcmPath() : processor.getPatchJsonPath());
+    folderChooser = std::make_unique<juce::FileChooser>(pcm ? "Choose the PCM samples folder" : "Choose the patch banks folder",
+                                                        current, "");
+    const juce::Component::SafePointer<SettingsOverlay> safe(this);
+    folderChooser->launchAsync(
+        juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+        [safe, pcm](const juce::FileChooser& chooser) {
+            const auto folder = chooser.getResult();
+            if (safe == nullptr || !folder.isDirectory())
+                return;
+            // 読み込み直すと、UIでの割り当て/編集は消える
+            juce::AlertWindow::showAsync(
+                juce::MessageBoxOptions()
+                    .withIconType(juce::MessageBoxIconType::WarningIcon)
+                    .withTitle(pcm ? "Load drum samples from this folder?" : "Load patch banks from this folder?")
+                    .withMessage(folder.getFullPathName() + "\n\n"
+                                 + (pcm ? "The drum kit is rebuilt from its <note>.wav files, and notes you assigned by hand are replaced."
+                                        : "Every bank is reloaded from its <bank>.json file, and patch edits you have not saved are lost."))
+                    .withButton("Load")
+                    .withButton("Cancel")
+                    .withAssociatedComponent(safe.getComponent()),
+                [safe, pcm, folder](int result) {
+                    if (safe == nullptr || result != 1)
+                        return;
+                    const auto path = folder.getFullPathName().toStdString();
+                    if (pcm)
+                        safe->processor.setPcmPath(path);
+                    else
+                        safe->processor.setPatchJsonPath(path);
+                    safe->processor.updateHostDisplay(juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged(true));
+                    safe->update();
+                });
+        });
 }
 
 void SettingsOverlay::open()
@@ -550,7 +594,7 @@ void SettingsOverlay::update()
 
 juce::Rectangle<int> SettingsOverlay::panelBounds() const
 {
-    return getLocalBounds().withSizeKeepingCentre(juce::jmin(560, getWidth() - 40), juce::jmin(500, getHeight() - 40));
+    return getLocalBounds().withSizeKeepingCentre(juce::jmin(560, getWidth() - 40), juce::jmin(560, getHeight() - 40));
 }
 
 void SettingsOverlay::paint(juce::Graphics& g)
@@ -576,6 +620,7 @@ void SettingsOverlay::paint(juce::Graphics& g)
     };
     heading(numChipsLabel.getY() - 24, "Engine");
     heading(pcOverrideToggle.getY() - 24, "Program change");
+    heading(pcmFolderButton.getY() - 24, "Asset folders");
     heading(gmResetButton.getY() - 24, "Reset");
     heading(infoLabel.getY() - 22, "Status");
 }
@@ -599,6 +644,12 @@ void SettingsOverlay::resized()
     row.removeFromLeft(space::lg);
     pcProgramLabel.setBounds(row.removeFromLeft(64));
     pcProgramSlider.setBounds(row.removeFromLeft(140));
+
+    area.removeFromTop(space::xl + 6);
+    row = area.removeFromTop(space::control);
+    pcmFolderButton.setBounds(row.removeFromLeft(130));
+    row.removeFromLeft(space::sm);
+    patchFolderButton.setBounds(row.removeFromLeft(130));
 
     area.removeFromTop(space::xl + 6);
     row = area.removeFromTop(space::control);

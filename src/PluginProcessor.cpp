@@ -27,6 +27,18 @@ std::string getAssetDirectoryPath(const char* environmentVariable, const std::st
 
     return directoryPath.toStdString();
 }
+
+std::string normalizeAssetDirectoryPath(const std::string& path)
+{
+    if (path.empty())
+        return {};
+
+    auto directoryPath = juce::File(path).getFullPathName();
+    if (!directoryPath.endsWithChar(juce::File::getSeparatorChar()))
+        directoryPath += juce::File::getSeparatorChar();
+
+    return directoryPath.toStdString();
+}
 }
 
 #define DEFAULT_CHIP_COUNT 4
@@ -1730,6 +1742,8 @@ void _3HSPlugAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     }
     {
         juce::ScopedLock sl(processLock);
+        state.setProperty("pcmPath", juce::String(pcmPath), nullptr);
+        state.setProperty("patchJsonPath", juce::String(patchJsonPath), nullptr);
         state.setProperty("numChips", numChips, nullptr);
         state.setProperty("pcOverride", pcOverrideEnabled, nullptr);
         state.setProperty("pcOverrideBank", pcOverrideBank, nullptr);
@@ -1754,9 +1768,23 @@ void _3HSPlugAudioProcessor::setStateInformation (const void* data, int sizeInBy
     auto xml = getXmlFromBinary(data, sizeInBytes);
     if (xml == nullptr)
         return;
+    // 以前の形式: アセットのパスだけをXMLの属性で持つ
+    if (xml->hasTagName("3HSPlugState")) {
+        if (xml->hasAttribute("pcmPath"))
+            setPcmPath(xml->getStringAttribute("pcmPath").toStdString());
+        if (xml->hasAttribute("patchJsonPath"))
+            setPatchJsonPath(xml->getStringAttribute("patchJsonPath").toStdString());
+        return;
+    }
     auto state = juce::ValueTree::fromXml(*xml);
     if (!state.hasType("S3HSPlugState"))
         return;
+
+    // パスを先に戻す（読み込み直したあとで、保存されていた編集を適用する）
+    if (state.hasProperty("pcmPath"))
+        setPcmPath(state.getProperty("pcmPath").toString().toStdString());
+    if (state.hasProperty("patchJsonPath"))
+        setPatchJsonPath(state.getProperty("patchJsonPath").toString().toStdString());
 
     auto params = state.getChildWithName(parameters.state.getType());
     if (params.isValid())
@@ -1916,6 +1944,8 @@ void _3HSPlugAudioProcessor::applyPatchToActiveVoices(int bankNumber, int progra
     }
 }
 
+//=======================================================================}
+
 //==============================================================================
 // ドラムキット
 void _3HSPlugAudioProcessor::uploadDrumMemory(S3HS_sound& sound, uint32_t bytes) const
@@ -2020,6 +2050,50 @@ void _3HSPlugAudioProcessor::auditionDrum(int note, int velocity)
     uiMidi.addEvent(juce::MidiMessage::noteOn(10, juce::jlimit(0, 127, note), static_cast<juce::uint8>(juce::jlimit(1, 127, velocity))), 0);
 }
 
+void _3HSPlugAudioProcessor::setPcmPath(const std::string& path)
+{
+    const auto normalizedPath = normalizeAssetDirectoryPath(path);
+    if (normalizedPath.empty())
+        return;
+
+    const juce::ScopedLock kl(kitLock);
+    {
+        juce::ScopedLock sl(processLock);
+        if (pcmPath == normalizedPath)
+            return;
+        pcmPath = normalizedPath;
+    }
+    // 新しいフォルダの「ノート番号.wav」でキットを作り直す（UIで割り当てたものは消える）
+    drumKit.loadDefaults(juce::File(normalizedPath));
+    commitDrumKit();
+}
+
+void _3HSPlugAudioProcessor::setPatchJsonPath(const std::string& path)
+{
+    const auto normalizedPath = normalizeAssetDirectoryPath(path);
+    if (normalizedPath.empty())
+        return;
+
+    juce::ScopedLock sl(processLock);
+    if (patchJsonPath == normalizedPath)
+        return;
+
+    patchJsonPath = normalizedPath;
+    patchBanks.initialize(patchJsonPath); // UIでの編集も消える
+    ++patchRevision;
+}
+
+std::string _3HSPlugAudioProcessor::getPcmPath() const
+{
+    juce::ScopedLock sl(processLock);
+    return pcmPath;
+}
+
+std::string _3HSPlugAudioProcessor::getPatchJsonPath() const
+{
+    juce::ScopedLock sl(processLock);
+    return patchJsonPath;
+}
 uint64_t _3HSPlugAudioProcessor::getCurrentTick() const
 {
     return currentTick;

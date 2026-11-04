@@ -120,6 +120,10 @@ private:
     juce::Slider pcBankSlider, pcProgramSlider;
     juce::TextButton gmResetButton { "GM Reset" };
     juce::TextButton panicButton { "All Notes Off" };
+    juce::TextButton pcmFolderButton { "PCM folder..." };
+    juce::TextButton patchFolderButton { "Patch folder..." };
+    std::unique_ptr<juce::FileChooser> folderChooser;
+    void chooseAssetFolder(bool pcm);
     juce::Label infoLabel;
 };
 
