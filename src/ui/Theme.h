@@ -154,8 +154,13 @@ public:
         g.setColour(slider.findColour(juce::Slider::rotarySliderOutlineColourId).withMultipliedAlpha(enabled ? 1.0f : 0.5f));
         g.strokePath(track, juce::PathStrokeType(lineW, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
+        // 0をまたぐ範囲（Fine、Key shift）は中央から弧を描く
+        float fromAngle = startAngle;
+        if (slider.getMinimum() < 0.0 && slider.getMaximum() > 0.0)
+            fromAngle = startAngle + static_cast<float>(slider.valueToProportionOfLength(0.0)) * (endAngle - startAngle);
         juce::Path value;
-        value.addCentredArc(centre.x, centre.y, arcRadius, arcRadius, 0.0f, startAngle, angle, true);
+        value.addCentredArc(centre.x, centre.y, arcRadius, arcRadius, 0.0f,
+                            juce::jmin(fromAngle, angle), juce::jmax(fromAngle, angle), true);
         g.setColour(fill);
         g.strokePath(value, juce::PathStrokeType(lineW, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 

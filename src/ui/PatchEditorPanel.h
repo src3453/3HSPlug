@@ -47,7 +47,7 @@ private:
     bool carrier = true;
     bool feedbackTarget = false;
     juce::ComboBox waveBox;
-    Knob ratio { "Ratio" }, level { "Level" }, attack { "Attack" }, decay { "Decay" }, sustain { "Sustain" }, release { "Release" };
+    Knob coarse { "Coarse" }, fine { "Fine" }, level { "Level" }, attack { "Attack" }, decay { "Decay" }, sustain { "Sustain" }, release { "Release" };
 };
 
 class PatchEditorPanel : public juce::Component
