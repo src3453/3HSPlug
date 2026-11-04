@@ -1,5 +1,7 @@
 # Build directories
 /build
+/build-au
+/build-macos
 /.vs
 lib
 /.vscode
