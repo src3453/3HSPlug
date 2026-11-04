@@ -31,12 +31,17 @@ private:
     void renderWaveforms(juce::Rectangle<int> pixelBounds, float scale);
     juce::String channelTitle(int flat) const;
     juce::String channelSubtitle(int flat) const;
+    int midiChannelFor(int flat) const;
+    juce::Colour cellColour(int cellIndex) const;
 
     _3HSPlugAudioProcessor& processor;
     juce::TextButton prevButton { "<" }, nextButton { ">" };
     juce::Label pageLabel, gainLabel;
-    juce::ComboBox gainBox, fpsBox, dcBox;
-    juce::Label fpsLabel, dcLabel;
+    juce::ComboBox gainBox, fpsBox, dcBox, colourBox;
+    juce::Label fpsLabel, dcLabel, colourLabel;
+    enum class ColourMode { white = 1, voice, midiChannel };
+    ColourMode colourMode = ColourMode::white;
+    std::array<juce::Colour, pageSize> cellColours;
     bool removeDc = false;
 
     int page = 0;
