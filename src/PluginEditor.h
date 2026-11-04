@@ -1,110 +1,44 @@
-/*
-  ==============================================================================
-
-    This file contains the basic framework code for a JUCE plugin editor.
-
-  ==============================================================================
-*/
-
 #pragma once
 
 #include <JuceHeader.h>  // JUCEヘッダーファイルはビルド時に生成されるので、このIntelliSenseエラーは無視する
 #include "PluginProcessor.h"
-//#include "OscilloscopeComponent.h"
+#include "ui/Theme.h"
+#include "ui/Panels.h"
+#include "ui/PatchEditorPanel.h"
 
 //==============================================================================
-/**
- * スクロール可能な16進ダンプビューアーコンポーネント
- */
-class HexDumpViewer : public juce::Component
+// 区画:
+//   タイトルバー（Panic / Settings）
+//   チャンネルアクティビティ（クリックでパッチエディタのチャンネルを選ぶ）
+//   パッチエディタ（選んだチャンネルの現在のパッチ。編集は発音中の音にも即反映）
+//   ボイス状態（チップごとのFM/PCMの割り当て）
+//   マスター（音量フェーダーとステレオメーター）
+//   設定（オーバーレイ）
+class _3HSPlugAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
-    HexDumpViewer();
-    ~HexDumpViewer() override;
-    
-    void paint(juce::Graphics& g) override;
-    void resized() override;
-    
-    // データを更新する
-    void updateData(const std::vector<uint8_t>& data, uint32_t baseAddress = 0x400000);
-    
-    // マウスホイールでスクロール
-    void mouseWheelMove(const juce::MouseEvent& event, const juce::MouseWheelDetails& wheel) override;
-    
-private:
-    std::vector<uint8_t> hexData;
-    uint32_t baseAddr = 0x400000;
-    int scrollOffset = 0;
-    int bytesPerLine = 16;
-    int lineHeight = 16;
-    juce::Font monoFont;
-    
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(HexDumpViewer)
-};
-
-//==============================================================================
-/**
-*/
-class _3HSPlugAudioProcessorEditor  : public juce::AudioProcessorEditor, private juce::Timer
-{
-public:
-    _3HSPlugAudioProcessorEditor (_3HSPlugAudioProcessor&);
+    explicit _3HSPlugAudioProcessorEditor(_3HSPlugAudioProcessor&);
     ~_3HSPlugAudioProcessorEditor() override;
 
-    //==============================================================================
-    void paint (juce::Graphics&) override;
+    void paint(juce::Graphics&) override;
     void resized() override;
-    void updateGSDotMatrix(const uint8_t* dotData); // ドットマトリクス更新関数
-    void updateChannelActivitityMonitor(); // チャンネルアクティビティモニター更新関数
 
 private:
-    // This reference is provided as a quick way for your editor to
-    // access the processor object that created it.
-    _3HSPlugAudioProcessor& audioProcessor;
-
-    // パンポット表示用のUIコンポーネント
-    struct PanKnob
-    {
-        float panValue = 0.0f; // -1.0 (L) ～ 1.0 (R)
-    };
-    std::vector<PanKnob> panKnobs;
-
     void timerCallback() override;
-    uint64_t currentDisplayTick = 0; // 時間経過による減衰計算用
-    
-    // パンポット表示用描画関数（LR分離バー表示）
-    void drawPanBars(juce::Graphics& g, int x, int y, int width, int height, int panL, int panR);
+    void selectChannel(int midiChannel);
 
-    // オシロスコープコンポーネント
-    //std::unique_ptr<MultiOscilloscopeComponent> multiOscilloscope;
-    
-    // 16進ダンプビューアーコンポーネント
-    std::unique_ptr<HexDumpViewer> hexDumpViewer;
-    
-    // オシロスコープデータ更新メソッド
-    //void updateOscilloscopeData();
+    _3HSPlugAudioProcessor& audioProcessor;
+    ui::LookAndFeel lookAndFeel;
+    juce::TooltipWindow tooltipWindow { this, 600 };
 
-    // GUI Components
-    juce::TextButton panicButton;
-    juce::TextButton gmResetButton;
-    
-    juce::Label numChipsLabel;
-    juce::ComboBox numChipsComboBox;
-    
-    juce::ToggleButton pcOverrideButton;
-    juce::Label pcOverrideBankLabel;
-    juce::TextEditor pcOverrideBankEditor;
-    juce::Label pcOverrideProgramLabel;
-    juce::TextEditor pcOverrideProgramEditor;
+    ui::TitleBar titleBar;
+    ui::ChannelActivityPanel channelActivity;
+    ui::PatchEditorPanel patchEditor;
+    ui::VoiceStatusPanel voiceStatus;
+    ui::MasterSection master;
+    ui::SettingsOverlay settings;
 
-    juce::Label frequencyQuantizeFrequencyLabel;
-    juce::TextEditor frequencyQuantizeFrequencyEditor;
+    int laidOutChips = 0;
 
-    bool dotData[16][16] = {{false}}; // ドットマトリクスの状態を保持する2次元配列（16x16）
-    std::string gsTextData; // GSテキストディスプレイデータ
-    float channelActivities[16] = {0.0f}; // チャンネルアクティビティの状態を保持する配列（0.0～1.0）
-    uint64_t lastChannelUpdateTick[16] = {0}; // チャンネルの最後の更新時刻（各チャンネルごと）
-    bool channelActivityDotData[16][16] = {{false}}; // チャンネルアクティビティのドットマトリクスデータ（16チャンネル×16レベル）
-
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (_3HSPlugAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(_3HSPlugAudioProcessorEditor)
 };

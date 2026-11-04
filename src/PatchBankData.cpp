@@ -16,6 +16,7 @@ PatchBankの初期化と、プログラム番号に該当しない場合のフ�
 
 std::vector<std::vector<Patch>> PatchBanks(MAX_BANKS, std::vector<Patch>(PATCH_BANK_SIZE));
 std::vector<std::vector<Patch>> PatchBanksOriginal(MAX_BANKS, std::vector<Patch>(PATCH_BANK_SIZE));
+std::vector<std::vector<Patch>> PatchBanksFile(MAX_BANKS, std::vector<Patch>(PATCH_BANK_SIZE));
 
 Patch defaultPatch; // デフォルトパッチ
 
@@ -53,6 +54,7 @@ void initializePatchBanks(const std::string& patchesDir) {
     }
     
     PatchBanksOriginal = PatchBanks; // オリジナルのパッチバンクを保存
+    PatchBanksFile = PatchBanks;
 }
 
 // 一時的な関数: 現在のPatchBankの内容をJSONファイルに書き出す
@@ -67,6 +69,54 @@ void exportCurrentPatchBankToJSON() {
 
 void resetPatchBanks() {
     PatchBanks = PatchBanksOriginal;
+}
+
+bool patchesEqual(const Patch& a, const Patch& b) {
+    if (a.defined != b.defined) return false;
+    if (!a.defined) return true;
+    if (a.modmode != b.modmode || a.feedback != b.feedback || a.fbDest != b.fbDest || a.keyShift != b.keyShift)
+        return false;
+    for (size_t i = 0; i < a.operators.size(); ++i) {
+        const Operator& x = a.operators[i];
+        const Operator& y = b.operators[i];
+        if (x.frequency != y.frequency || x.attack != y.attack || x.decay != y.decay || x.sustain != y.sustain
+            || x.release != y.release || x.volume != y.volume || x.waveform != y.waveform)
+            return false;
+    }
+    return true;
+}
+
+static bool validPatchIndex(int bankNumber, int programNumber) {
+    return bankNumber >= 0 && bankNumber < MAX_BANKS && programNumber >= 0 && programNumber < PATCH_BANK_SIZE;
+}
+
+void setUserPatch(int bankNumber, int programNumber, const Patch& patch) {
+    if (!validPatchIndex(bankNumber, programNumber)) return;
+    Patch stored = patch;
+    stored.defined = true;
+    stored.fbDest = static_cast<uint8_t>(std::clamp(static_cast<int>(stored.fbDest), 0, 7));
+    stored.modmode = static_cast<uint8_t>(std::clamp(static_cast<int>(stored.modmode), 0, 12));
+    for (auto& op : stored.operators) op.waveform &= 0x0F;
+    PatchBanks[bankNumber][programNumber] = stored;
+    PatchBanksOriginal[bankNumber][programNumber] = stored;
+}
+
+void revertUserPatch(int bankNumber, int programNumber) {
+    if (!validPatchIndex(bankNumber, programNumber)) return;
+    PatchBanks[bankNumber][programNumber] = PatchBanksFile[bankNumber][programNumber];
+    PatchBanksOriginal[bankNumber][programNumber] = PatchBanksFile[bankNumber][programNumber];
+}
+
+bool isUserPatchModified(int bankNumber, int programNumber) {
+    if (!validPatchIndex(bankNumber, programNumber)) return false;
+    return !patchesEqual(PatchBanksOriginal[bankNumber][programNumber], PatchBanksFile[bankNumber][programNumber]);
+}
+
+bool saveUserPatchBank(const std::string& filePath, int bankNumber) {
+    if (bankNumber < 0 || bankNumber >= MAX_BANKS) return false;
+    if (!savePatchBankToJSON(filePath, PatchBanksOriginal[bankNumber])) return false;
+    PatchBanksFile[bankNumber] = PatchBanksOriginal[bankNumber];
+    return true;
 }
 
 // プログラム番号に該当しない場合は0番パッチを返す
@@ -337,13 +387,18 @@ bool loadPatchBankFromJSON(const std::string& filePath, int bankNumber) {
 
 // PatchBankをJSONに保存する
 bool savePatchBankToJSON(const std::string& filePath, int bankNumber) {
+    if (bankNumber < 0 || bankNumber >= MAX_BANKS) return false;
+    return savePatchBankToJSON(filePath, PatchBanks[bankNumber]);
+}
+
+bool savePatchBankToJSON(const std::string& filePath, const std::vector<Patch>& bank) {
     try {
         std::ostringstream json;
         json << "{\n  \"patches\": [\n";
         
         bool first = true;
-        for (int i = 0; i < PATCH_BANK_SIZE; ++i) {
-            const Patch& patch = PatchBanks[bankNumber][i];
+        for (int i = 0; i < static_cast<int>(bank.size()); ++i) {
+            const Patch& patch = bank[i];
             if (!patch.defined) {
                 continue;
             }
@@ -383,10 +438,12 @@ bool savePatchBankToJSON(const std::string& filePath, int bankNumber) {
         json << "\n  ]\n}";
         
         std::ofstream fout(filePath);
+        if (!fout) return false;
         fout << json.str();
         fout.close();
+        if (!fout) return false;
         
-        std::cout << "[PatchLoaderJSON] Successfully saved bank " << bankNumber << " to " << filePath << std::endl;
+        std::cout << "[PatchLoaderJSON] Successfully saved bank to " << filePath << std::endl;
         return true;
         
     } catch (const std::exception& e) {
