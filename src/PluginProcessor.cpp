@@ -108,9 +108,7 @@ void _3HSPlugAudioProcessor::resetGM()
         for (int cc = 0; cc < 128; ++cc) {
             channelCC[ch][cc] = 0;
         }
-        #if USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY
-        currentRollingIndex = 0; // ローリングチャンネル割り当て戦略用インデックスをリセット
-        #endif
+        currentRollingIndex = 0; // ローリング割り当て用インデックスをリセット
         channelCC[ch][10] = 64;  // パン
         channelCC[ch][7]  = 127; // ボリューム
         channelCC[ch][11] = 127; // エクスプレッション
@@ -1231,80 +1229,68 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
 
                 float freq = 440.0f * std::pow(2.0f, ((note + totalKeyShift + bendSemis) - 69) / 12.0f);
                 int freqInt = static_cast<int>(freq);
-                #if USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY == 1
-                // ローリングチャンネル割り当て戦略: 常に次のスロットを使用する。もし該当スロットが使用中なら、次の空きスロットを探す。
-                int voiceIndex = currentRollingIndex;
-                // Held Listにnoteがある場合はそれを上書きする。なければ、もしスロットが使用中なら次の空きスロットを探す。
-                int heldIndex = std::find(heldNotes[ch - 1].begin(), heldNotes[ch - 1].end(), note) - heldNotes[ch - 1].begin();
-                if (heldIndex >= 0 && heldIndex < static_cast<int>(heldNotes[ch - 1].size())) {
-                    // Held Listにある場合は、現在のvoiceIndexを使用する（上書き）
-                    for (int i = 0; i < numChips * numVoices; ++i) {
-                        int idx = (currentRollingIndex + i) % (numChips * numVoices);
-                        if (voiceSlots[idx].inUse && voiceSlots[idx].noteNumber == note + totalKeyShift && voiceSlots[idx].midiChannel == ch) {
-                            voiceIndex = idx;
-                            printf("[Voice] Rolling allocation: note %d on channel %d is held, reusing slot %d\n", note, ch, voiceIndex);
-                            break;
+                const int totalVoices = numChips * numVoices;
+                const int strategy = allocationStrategy.load();
+                int voiceIndex = -1;
+                // 同じch/noteが再生中のスロットを探す（再トリガー用）
+                auto findSameNote = [&]() {
+                    for (int i = 0; i < totalVoices; ++i) {
+                        int idx = (strategy == (int) AllocationStrategy::Rolling ? (currentRollingIndex + i) % totalVoices : i);
+                        if (voiceSlots[idx].inUse && voiceSlots[idx].noteNumber == note + totalKeyShift && voiceSlots[idx].midiChannel == ch)
+                            return idx;
+                    }
+                    return -1;
+                };
+                // 最も古いスロット（lastUsedTickが最小）
+                auto findOldest = [&]() {
+                    uint64_t minTick = UINT64_MAX;
+                    int oldest = 0;
+                    for (int i = 0; i < totalVoices; ++i)
+                        if (voiceSlots[i].lastUsedTick < minTick) { minTick = voiceSlots[i].lastUsedTick; oldest = i; }
+                    return oldest;
+                };
+
+                if (strategy == (int) AllocationStrategy::Rolling) {
+                    // ローリング: 常に次のスロットを使用し、使用中なら次の空きスロットを探す。
+                    voiceIndex = currentRollingIndex;
+                    const bool isHeld = std::find(heldNotes[ch - 1].begin(), heldNotes[ch - 1].end(), note) != heldNotes[ch - 1].end();
+                    if (isHeld) {
+                        // 押さえ中のノートは同じスロットを上書きする
+                        if (int same = findSameNote(); same >= 0)
+                            voiceIndex = same;
+                    } else {
+                        if (voiceSlots[voiceIndex].inUse) {
+                            int foundFree = -1;
+                            for (int i = 0; i < totalVoices; ++i) {
+                                int idx = (currentRollingIndex + i) % totalVoices;
+                                if (!voiceSlots[idx].inUse) { foundFree = idx; break; }
+                            }
+                            if (foundFree >= 0)
+                                voiceIndex = foundFree;
+                            else
+                                printf("[Warning::Voice] No free slots found during rolling allocation, reusing slot %d\n", currentRollingIndex);
                         }
+                        currentRollingIndex = (currentRollingIndex + 1) % totalVoices;
                     }
                 } else {
-                    if (voiceSlots[voiceIndex].inUse) {
-                        //printf("[Warning::Voice] Rolling allocation: slot %d is in use, searching for next free slot\n", voiceIndex);
-                        int foundFree = -1;
-                        for (int i = 0; i < numChips * numVoices; ++i) {
-                            int idx = (currentRollingIndex + i) % (numChips * numVoices);
-                            if (!voiceSlots[idx].inUse) {
-                                foundFree = idx;
-                                break;
-                            }
-                        }
-                        if (foundFree >= 0) {
-                            voiceIndex = foundFree;
-                            //printf("[Voice] Found free slot %d for rolling allocation\n", voiceIndex);
+                    // 低位優先 / 最古優先: 同じノートがあれば再利用、なければ空きスロット、全て使用中なら最古を奪う
+                    voiceIndex = findSameNote();
+                    if (voiceIndex < 0) {
+                        if (strategy == (int) AllocationStrategy::LeastRecentlyUsed) {
+                            // 空きスロットのうち最後に使われたのが最も古いもの
+                            uint64_t minTick = UINT64_MAX;
+                            for (int i = 0; i < totalVoices; ++i)
+                                if (!voiceSlots[i].inUse && voiceSlots[i].lastUsedTick < minTick) { minTick = voiceSlots[i].lastUsedTick; voiceIndex = i; }
                         } else {
-                            printf("[Warning::Voice] No free slots found during rolling allocation, reusing slot %d\n", currentRollingIndex);
+                            for (int i = 0; i < totalVoices; ++i)
+                                if (!voiceSlots[i].inUse) { voiceIndex = i; break; }
                         }
                     }
-                    currentRollingIndex = (currentRollingIndex + 1) % (numChips * numVoices);
-                }
-                #else
-                // 既存ノート（同じch/note）が再生中なら、そのスロットを再利用
-                int voiceIndex = -1;
-                for (int i = 0; i < numChips * numVoices; ++i) {
-                    if (voiceSlots[i].inUse && voiceSlots[i].noteNumber == note + totalKeyShift && voiceSlots[i].midiChannel == ch) {
-                        voiceIndex = i;
-                        if (std::find(heldNotes[ch - 1].begin(), heldNotes[ch - 1].end(), note) != heldNotes[ch - 1].end()) {
-                            printf("[Voice] Reusing voice slot %d for held note %d on channel %d, but key is held\n", voiceIndex, note, ch);
-                        } else {
-                            printf("[Warning::Voice] Reusing voice slot %d for note %d on channel %d, forgot note off?\n", voiceIndex, note, ch);
-                        }
-                    }
-                    break;
-                }
-                // 見つからなければ空きスロットを探す
-                if (voiceIndex < 0) {
-                    for (int i = 0; i < numChips * numVoices; ++i) {
-                        if (!voiceSlots[i].inUse) {
-                            voiceIndex = i;
-                            break;
-                        }
+                    if (voiceIndex < 0) {
+                        voiceIndex = findOldest();
+                        printf("[Warning::Voice] No free voice slots, reusing oldest slot %d\n", voiceIndex);
                     }
                 }
-                // 空きもなければ最も古いスロットを強制的に使う
-                if (voiceIndex < 0) {
-                    uint64_t minTick = UINT64_MAX;
-                    int oldestIndex = -1;
-                    for (int i = 0; i < numChips * numVoices; ++i) {
-                        if (voiceSlots[i].lastUsedTick < minTick) {
-                            minTick = voiceSlots[i].lastUsedTick;
-                            oldestIndex = i;
-                        }
-                    }
-                    if (oldestIndex >= 0) {
-                        voiceIndex = oldestIndex;
-                    }
-                    printf("[Warning::Voice] No free voice slots, reusing oldest slot %d\n", voiceIndex);
-                }
-                #endif
                 // tickカウンタを進める
                 ++currentTick;
             
@@ -1852,6 +1838,7 @@ void _3HSPlugAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
         state.setProperty("pcmPath", juce::String(pcmPath), nullptr);
         state.setProperty("patchJsonPath", juce::String(patchJsonPath), nullptr);
         state.setProperty("numChips", numChips, nullptr);
+        state.setProperty("allocationStrategy", allocationStrategy.load(), nullptr);
         state.setProperty("pcOverride", pcOverrideEnabled, nullptr);
         state.setProperty("pcOverrideBank", pcOverrideBank, nullptr);
         state.setProperty("pcOverrideProgram", pcOverrideProgram, nullptr);
@@ -1898,6 +1885,7 @@ void _3HSPlugAudioProcessor::setStateInformation (const void* data, int sizeInBy
         parameters.replaceState(params);
 
     setNumChips(static_cast<int>(state.getProperty("numChips", numChips)));
+    setAllocationStrategy(static_cast<int>(state.getProperty("allocationStrategy", allocationStrategy.load())));
     if (auto kit = state.getChildWithName("DrumKit"); kit.isValid()) {
         const juce::ScopedLock kl(kitLock);
         drumKit.fromState(kit);
@@ -2413,6 +2401,11 @@ int _3HSPlugAudioProcessor::getPcOverrideProgram() const
     return pcOverrideProgram;
 }
 
+void _3HSPlugAudioProcessor::setAllocationStrategy(int s)
+{
+    allocationStrategy.store(juce::jlimit(0, (int) AllocationStrategy::Count - 1, s));
+}
+
 void _3HSPlugAudioProcessor::setNumChips(int n)
 {
     const juce::ScopedLock kl(kitLock); // 新しいチップへPCMを転送するため
@@ -2454,9 +2447,7 @@ void _3HSPlugAudioProcessor::setNumChips(int n)
         
         // 状態リセット
         allNotesOff();
-        #if USE_ROLLING_CHANNEL_ALLOCATION_STRATEGY == 1 // 未割当インデックスによる例外回避
-        currentRollingIndex = 0; // ローリングチャンネル割り当て戦略用インデックスをリセット
-        #endif
+        currentRollingIndex = 0; // ローリング割り当て用インデックスをリセット
         
         printf("[System] NumChips changed to %d\n", numChips);
     }

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(juce_cmake_template VERSION 1.1.0)
+project(juce_cmake_template VERSION 1.2.0)
 
 enable_language(CXX)
 set(CMAKE_CXX_STANDARD 17)
