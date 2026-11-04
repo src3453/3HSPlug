@@ -96,7 +96,7 @@ void _3HSPlugAudioProcessor::resetGM()
     }
     gsDrumChannels.clear(); // GSドラムチャンネルをクリア
     updateDrumChannelMask();
-    resetPatchBanks(); // オーバーライドされたパッチをリセット
+    patchBanks.reset(); // オーバーライドされたパッチをリセット
     ++patchRevision;
 }
 
@@ -193,7 +193,7 @@ _3HSPlugAudioProcessor::_3HSPlugAudioProcessor()
             s3hsSounds[chip].syncPcmMemory();
             printf("[DrumPCM] PCM RAM transferred to chip %d\n", chip);
         }
-        initializePatchBanks(patchJsonPath); // パッチバンク初期化
+        patchBanks.initialize(patchJsonPath); // パッチバンク初期化
         resetGM(); // GMリセット
         
 }
@@ -506,7 +506,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
             printf("[Patch Override] Bank %02X, Patch %02X, Addr %02X, Value %02X\n", bankNumber, patchNumber, relativeAddr, value);
             // パッチオーバーライド処理
             if (patchNumber >= 0 && patchNumber < 128 && bankNumber >= 0 && bankNumber < 128) {
-                setPatchOverride(bankNumber, patchNumber, relativeAddr, value);
+                patchBanks.setPatchOverride(bankNumber, patchNumber, relativeAddr, value);
                 ++patchRevision;
             }
         }
@@ -812,7 +812,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                         int bank = (baseAddr - 0x400000) / 0x40;
                         int progIdx = currentProgram[v.midiChannel-1];
                         auto mut = DoMutation(this->channelCC[v.midiChannel]);
-                        auto regs = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut).toRegValues(vol);
+                        auto regs = patchBanks.getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut).toRegValues(vol);
                         
                         for (size_t i = 0x10; i < 0x18; ++i) {
                         s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + static_cast<int>(i), regs[i]);
@@ -933,7 +933,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
             if (patchAltered) {
                 // パッチが変更されたフラグが立っている場合、現在のプログラムに対してエフェクトを適用してレジスタを更新
                 int progIdx = currentProgram[ch-1];
-                auto& effectivePatch = getEffectivePatch(currentBank[ch-1], progIdx);
+                auto& effectivePatch = patchBanks.getEffectivePatch(currentBank[ch-1], progIdx);
                 auto mut = DoMutation(this->channelCC[ch]);
                 auto regs = effectivePatch.applyMutation(mut).toRegValues(0); // 音量は個別に計算するため0で取得
                 for (int flat = 0; flat < numChips * numVoices; ++flat) {
@@ -1026,8 +1026,8 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                         printf("[MIDI] Program Change: Bank %d, Program %d, CH %d\n", bank, prog, msg.getChannel());
                         
                         // 代理発音の確認
-                        auto& effectivePatch = getEffectivePatch(bank, prog);
-                        if (bank != 0 && !PatchBanks[bank][prog].defined && PatchBanks[0][prog].defined) {
+                        auto& effectivePatch = patchBanks.getEffectivePatch(bank, prog);
+                        if (bank != 0 && !patchBanks.banks[bank][prog].defined && patchBanks.banks[0][prog].defined) {
                             printf("[PatchBank] Using fallback from Bank 0 for Bank %d Program %d\n", bank, prog);
                         }
                     }
@@ -1165,7 +1165,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
 
                 int progIdx = currentProgram[ch-1];
                 auto mut = DoMutation(this->channelCC[ch]);
-                auto patch = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut);
+                auto patch = patchBanks.getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut);
                 int totalKeyShift = keyShift + patch.keyShift;
 
                 float bendSemis = bendRange * (static_cast<float>(bend) / 8192.0f);
@@ -1340,7 +1340,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
             int keyShift = 0;//(ch >= 1 && ch <= 16) ? channelKeyShift[ch - 1] : 0;
             int progIdx = currentProgram[ch-1];
             auto mut = DoMutation(this->channelCC[ch]);
-            auto patch = getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut);
+            auto patch = patchBanks.getEffectivePatch(currentBank[ch-1], progIdx).applyMutation(mut);
             int totalKeyShift = keyShift + patch.keyShift;
             int adjustedNote = note + totalKeyShift;
             
@@ -1746,8 +1746,8 @@ void _3HSPlugAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
         juce::ValueTree edited("EditedPatches");
         for (int bank = 0; bank < MAX_BANKS; ++bank)
             for (int prog = 0; prog < PATCH_BANK_SIZE; ++prog)
-                if (isUserPatchModified(bank, prog))
-                    edited.appendChild(patchToValueTree(PatchBanksOriginal[bank][prog], bank, prog), nullptr);
+                if (patchBanks.isUserPatchModified(bank, prog))
+                    edited.appendChild(patchToValueTree(patchBanks.originalBanks[bank][prog], bank, prog), nullptr);
         state.appendChild(edited, nullptr);
     }
     state.appendChild(parameters.copyState(), nullptr);
@@ -1776,8 +1776,7 @@ void _3HSPlugAudioProcessor::setStateInformation (const void* data, int sizeInBy
 
     juce::ScopedLock sl(processLock);
     // いったんJSONファイルの内容に戻してから、保存されていた編集を適用する
-    PatchBanksOriginal = PatchBanksFile;
-    PatchBanks = PatchBanksFile;
+    patchBanks.restoreFromFiles();
     for (const auto& child : state.getChildWithName("EditedPatches")) {
         const int bank = child.getProperty("bank", -1);
         const int prog = child.getProperty("program", -1);
@@ -1785,10 +1784,9 @@ void _3HSPlugAudioProcessor::setStateInformation (const void* data, int sizeInBy
             continue;
         const Patch patch = patchFromValueTree(child);
         if (patch.defined) {
-            setUserPatch(bank, prog, patch);
+            patchBanks.setUserPatch(bank, prog, patch);
         } else {
-            PatchBanks[bank][prog].defined = false;
-            PatchBanksOriginal[bank][prog].defined = false;
+            patchBanks.clearUserPatch(bank, prog);
         }
     }
     ++patchRevision;
@@ -1844,8 +1842,8 @@ _3HSPlugAudioProcessor::PatchLocation _3HSPlugAudioProcessor::getChannelPatchLoc
         return location;
     location.bank = currentBank[midiChannel - 1];
     location.program = currentProgram[midiChannel - 1];
-    location.availability = getPatchAvailability(location.bank, location.program);
-    location.modified = isUserPatchModified(location.bank, location.program);
+    location.availability = patchBanks.getPatchAvailability(location.bank, location.program);
+    location.modified = patchBanks.isUserPatchModified(location.bank, location.program);
     return location;
 }
 
@@ -1853,7 +1851,7 @@ Patch _3HSPlugAudioProcessor::getChannelPatch(int midiChannel) const
 {
     juce::ScopedLock sl(processLock);
     const auto location = getChannelPatchLocation(midiChannel);
-    return getEffectivePatch(location.bank, location.program);
+    return patchBanks.getEffectivePatch(location.bank, location.program);
 }
 
 void _3HSPlugAudioProcessor::editChannelPatch(int midiChannel, const Patch& patch)
@@ -1863,7 +1861,7 @@ void _3HSPlugAudioProcessor::editChannelPatch(int midiChannel, const Patch& patc
     juce::ScopedLock sl(processLock);
     const int bank = currentBank[midiChannel - 1];
     const int prog = currentProgram[midiChannel - 1];
-    setUserPatch(bank, prog, patch);
+    patchBanks.setUserPatch(bank, prog, patch);
     applyPatchToActiveVoices(bank, prog);
     ++patchRevision;
 }
@@ -1875,7 +1873,7 @@ void _3HSPlugAudioProcessor::revertChannelPatch(int midiChannel)
     juce::ScopedLock sl(processLock);
     const int bank = currentBank[midiChannel - 1];
     const int prog = currentProgram[midiChannel - 1];
-    revertUserPatch(bank, prog);
+    patchBanks.revertUserPatch(bank, prog);
     applyPatchToActiveVoices(bank, prog);
     ++patchRevision;
 }
@@ -1887,7 +1885,7 @@ bool _3HSPlugAudioProcessor::saveChannelPatchBank(int midiChannel, juce::String&
     juce::ScopedLock sl(processLock);
     const int bank = currentBank[midiChannel - 1];
     const auto path = juce::File(patchJsonPath).getChildFile(juce::String(bank) + ".json");
-    const bool ok = saveUserPatchBank(path.getFullPathName().toStdString(), bank);
+    const bool ok = patchBanks.saveUserPatchBank(path.getFullPathName().toStdString(), bank);
     message = (ok ? "Saved " : "Failed to save ") + path.getFullPathName();
     ++patchRevision;
     return ok;
@@ -1902,8 +1900,8 @@ void _3HSPlugAudioProcessor::applyPatchToActiveVoices(int bankNumber, int progra
         if (!v.inUse || v.midiChannel < 1 || v.midiChannel > 16)
             continue;
         const int ch = v.midiChannel;
-        auto& effective = getEffectivePatch(currentBank[ch - 1], currentProgram[ch - 1]);
-        if (&effective != &PatchBanks[bankNumber][programNumber])
+        auto& effective = patchBanks.getEffectivePatch(currentBank[ch - 1], currentProgram[ch - 1]);
+        if (&effective != &patchBanks.banks[bankNumber][programNumber])
             continue;
         const int chip = flat / numVoices;
         const int vIdx = flat % numVoices;

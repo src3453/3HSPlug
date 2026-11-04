@@ -191,6 +191,8 @@ public:
     bool isDrumChannel(int midiChannel) const;
     // パッチの内容が変わるたびに増える（UIの再読み込み用）
     uint32_t getPatchRevision() const noexcept { return patchRevision.load(); }
+    // このインスタンスのパッチバンク（テスト・診断用。processLock外での書き込みは避けること）
+    const PatchBankSet& getPatchBanks() const noexcept { return patchBanks; }
 
     // GS Dot Matrix Data (64 bytes)
     std::array<uint8_t, 64> gsDotMatrixData{};
@@ -245,6 +247,7 @@ private:
 
     // パッチバンク機能
     // std::vector<Patch> patchBank = std::vector<Patch>(128); // 外部定義に切り替え
+    PatchBankSet patchBanks; // このインスタンス専用のパッチバンク（processLockで保護）
     std::array<int, 16> currentProgram{{0}};
     std::array<int, 16> currentBank{{0}};          // 各チャンネルの現在のバンク番号
 
