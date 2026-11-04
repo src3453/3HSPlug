@@ -23,14 +23,24 @@ add_test(NAME s3hs_core_tests COMMAND s3hs_core_tests)
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../lib/JUCE/modules/juce_core/juce_core.cpp")
     set(juce_modules "${CMAKE_CURRENT_SOURCE_DIR}/../lib/JUCE/modules")
+    # On Apple, juce_core needs Objective-C++: JUCE's .mm wrapper includes the .cpp.
+    set(juce_core_unit "${juce_modules}/juce_core/juce_core.cpp")
+    if(APPLE)
+        enable_language(OBJCXX)
+        set(juce_core_unit "${juce_modules}/juce_core/juce_core.mm")
+    endif()
     add_executable(patch_bank_tests patch_bank_tests.cpp ../src/PatchBankData.cpp
-        "${juce_modules}/juce_core/juce_core.cpp"
+        "${juce_core_unit}"
         "${juce_modules}/juce_core/juce_core_CompilationTime.cpp")
     target_compile_features(patch_bank_tests PRIVATE cxx_std_17)
     target_include_directories(patch_bank_tests PRIVATE "${juce_modules}")
     target_compile_definitions(patch_bank_tests PRIVATE JUCE_GLOBAL_MODULE_SETTINGS_INCLUDED=1 JUCE_USE_CURL=0)
     if(MSVC)
         target_compile_options(patch_bank_tests PRIVATE /utf-8 /bigobj)
+    endif()
+    if(APPLE)
+        target_link_libraries(patch_bank_tests PRIVATE
+            "-framework Cocoa" "-framework Foundation" "-framework IOKit" "-framework Security")
     endif()
     add_test(NAME patch_bank_tests COMMAND patch_bank_tests)
 endif()
