@@ -11,7 +11,10 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor(_3HSPlugAudioProcesso
       master(p),
       settings(p)
 {
+    ui::applySavedTheme();
+    lookAndFeel.applyTheme();
     setLookAndFeel(&lookAndFeel);
+    ui::appearanceChanged().addChangeListener(this);
 
     titleBar.onPanic = [this] { audioProcessor.allNotesOff(); };
     titleBar.onSettings = [this] { settings.open(); focusRing.toFront(false); };
@@ -36,6 +39,7 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor(_3HSPlugAudioProcesso
 _3HSPlugAudioProcessorEditor::~_3HSPlugAudioProcessorEditor()
 {
     stopTimer();
+    ui::appearanceChanged().removeChangeListener(this);
     setLookAndFeel(nullptr);
 }
 
@@ -66,6 +70,12 @@ void _3HSPlugAudioProcessorEditor::resized()
     voiceStatus.setBounds(area.removeFromBottom(voiceStatus.getPreferredHeight()));
     area.removeFromBottom(ui::space::sm);
     patchEditor.setBounds(area);
+}
+
+void _3HSPlugAudioProcessorEditor::changeListenerCallback(juce::ChangeBroadcaster*)
+{
+    ui::refreshFonts(*this);
+    ui::refreshTheme(*this);
 }
 
 void _3HSPlugAudioProcessorEditor::timerCallback()

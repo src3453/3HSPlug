@@ -65,7 +65,7 @@ void AlgorithmDiagram::updateTooltip()
     if (a.groupCount > 1)
         tip << (a.multiplyGroups ? "\nThe rows are multiplied (ring modulation)." : "\nThe rows are added.");
     tip << "\nThe loop marks the feedback destination (OP" << (fbTarget + 1) << "), which feeds its own output back into its phase"
-        << (fbAmount == 128 ? "; feedback is 128, so it is off." : ".");
+        << (fbAmount == 128 ? "; feedback is 0, so it is off." : ".");
     setTooltip(tip);
 }
 
@@ -75,7 +75,7 @@ void AlgorithmDiagram::paint(juce::Graphics& g)
     auto bounds = getLocalBounds().toFloat();
 
     g.setColour(colours::background);
-    g.fillRoundedRectangle(bounds, 4.0f);
+    g.fillRoundedRectangle(bounds, shape::r(4.0f));
 
     auto area = bounds.reduced(8.0f, 4.0f);
     const float outW = 30.0f;
@@ -140,7 +140,7 @@ void AlgorithmDiagram::paint(juce::Graphics& g)
             const juce::Rectangle<float> frame(x, boxY - framePad, frameW, boxH + 2.0f * framePad);
             if (ops.size() > 1) {
                 g.setColour(colours::fieldEdge.withAlpha(0.6f));
-                g.drawRoundedRectangle(frame, 3.0f, 1.0f);
+                g.drawRoundedRectangle(frame, shape::r(3.0f), 1.0f);
             }
             float bx = x + framePad;
             for (int op : ops) {
@@ -148,9 +148,9 @@ void AlgorithmDiagram::paint(juce::Graphics& g)
                 const bool isOutput = (outputs >> op) & 1u;
                 const auto role = isOutput ? colours::carrier : colours::modulator;
                 g.setColour(colours::panelRaised);
-                g.fillRoundedRectangle(box, 2.5f);
+                g.fillRoundedRectangle(box, shape::r(2.5f));
                 g.setColour(role);
-                g.drawRoundedRectangle(box.reduced(0.5f), 2.5f, 1.2f);
+                g.drawRoundedRectangle(box.reduced(0.5f), shape::r(2.5f), 1.2f);
                 g.setColour(colours::text);
                 g.setFont(font(juce::jmin(type::small, boxH - 1.0f), true));
                 g.drawText(juce::String(op + 1), box, juce::Justification::centred, false);

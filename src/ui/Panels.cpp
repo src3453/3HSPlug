@@ -30,8 +30,11 @@ TitleBar::TitleBar()
 void TitleBar::paint(juce::Graphics& g)
 {
     auto bounds = getLocalBounds();
-    g.setGradientFill(juce::ColourGradient(colours::panelRaised, 0.0f, 0.0f,
-                                           colours::panel, 0.0f, static_cast<float>(bounds.getHeight()), false));
+    if (shape::titleGradient)
+        g.setGradientFill(juce::ColourGradient(colours::panelRaised, 0.0f, 0.0f,
+                                               colours::panel, 0.0f, static_cast<float>(bounds.getHeight()), false));
+    else
+        g.setColour(colours::panel);
     g.fillRect(bounds);
     g.setColour(colours::accent);
     g.fillRect(bounds.removeFromBottom(2));
@@ -178,7 +181,7 @@ void ChannelActivityPanel::paint(juce::Graphics& g)
         auto header = getLocalBounds().removeFromTop(space::sectionHeader).reduced(space::md, 3);
         auto lcd = header.removeFromRight(juce::jmin(260, header.getWidth() / 2));
         g.setColour(colours::lcdBack);
-        g.fillRoundedRectangle(lcd.toFloat(), 3.0f);
+        g.fillRoundedRectangle(lcd.toFloat(), shape::r(3.0f));
         g.setColour(colours::lcdOn);
         g.setFont(monoFont(type::small));
         g.drawText(gsText, lcd.reduced(6, 0), juce::Justification::centredLeft, true);
@@ -195,7 +198,7 @@ void ChannelActivityPanel::paint(juce::Graphics& g)
     if (showGsDots) {
         auto lcd = juce::Rectangle<int>(area.getX(), barsTop, area.getWidth(), barsH);
         g.setColour(colours::lcdBack);
-        g.fillRoundedRectangle(lcd.toFloat().expanded(2.0f), 3.0f);
+        g.fillRoundedRectangle(lcd.toFloat().expanded(2.0f), shape::r(3.0f));
     }
 
     for (int ch = 0; ch < 16; ++ch) {
@@ -208,12 +211,12 @@ void ChannelActivityPanel::paint(juce::Graphics& g)
 
         if (selected) {
             g.setColour(colours::accent.withAlpha(0.12f));
-            g.fillRoundedRectangle(col.toFloat().expanded(1.0f, 0.0f), 4.0f);
+            g.fillRoundedRectangle(col.toFloat().expanded(1.0f, 0.0f), shape::r(4.0f));
             if (showFocusRing)
                 drawFocusRing(g, col.toFloat().expanded(2.0f, 1.0f));
             else {
                 g.setColour(colours::accent);
-                g.drawRoundedRectangle(col.toFloat().expanded(1.0f, 0.0f), 4.0f, 1.2f);
+                g.drawRoundedRectangle(col.toFloat().expanded(1.0f, 0.0f), shape::r(4.0f), 1.2f);
             }
         }
 
@@ -239,7 +242,7 @@ void ChannelActivityPanel::paint(juce::Graphics& g)
                                                   static_cast<float>(bars.getWidth()), segH).reduced(0.0f, 0.9f);
                 g.setColour(s < lit ? chColour.withMultipliedBrightness(0.65f + 0.35f * s / segments)
                                     : colours::panelRaised);
-                g.fillRoundedRectangle(seg, 1.0f);
+                g.fillRoundedRectangle(seg, shape::r(1.0f));
             }
         }
 
@@ -323,11 +326,11 @@ void VoiceStatusPanel::paint(juce::Graphics& g)
             }
 
             g.setColour(pcm ? colours::panelRaised.darker(0.15f) : colours::panelRaised);
-            g.fillRoundedRectangle(r, 2.0f);
+            g.fillRoundedRectangle(r, shape::r(2.0f));
             if (active && midiCh >= 1 && midiCh <= 16) {
                 const auto c = colours::forChannel(midiCh - 1);
                 g.setColour(c.withAlpha(0.25f + 0.5f * level));
-                g.fillRoundedRectangle(r.withWidth(juce::jmax(2.0f, r.getWidth() * level)), 2.0f);
+                g.fillRoundedRectangle(r.withWidth(juce::jmax(2.0f, r.getWidth() * level)), shape::r(2.0f));
                 if (showText) {
                     g.setColour(colours::text);
                     g.setFont(monoFont(type::caption));
@@ -342,7 +345,10 @@ void VoiceStatusPanel::paint(juce::Graphics& g)
     g.setColour(colours::textDim);
     g.setFont(font(type::caption));
     const auto headerRow = getLocalBounds().removeFromTop(space::sectionHeader);
-    const int fmX = area.getX() + labelW;
+    // 区画の見出し「Voices」と重ならない位置から
+    const int titleRight = headerRow.getX() + space::md
+                           + juce::GlyphArrangement::getStringWidthInt(font(type::small, true), "Voices") + space::md;
+    const int fmX = juce::jmax(area.getX() + labelW, titleRight);
     const int pcmX = juce::roundToInt(area.getX() + labelW + 8 * cellW + gap);
     g.drawText("FM voices 1 to 8", fmX + 2, headerRow.getY(), juce::roundToInt(8 * cellW), headerRow.getHeight(),
                juce::Justification::centredLeft);
@@ -364,7 +370,7 @@ MasterSection::MasterSection(_3HSPlugAudioProcessor& p) : processor(p)
         processor.getParameters(), _3HSPlugAudioProcessor::masterVolumeParamId, fader);
 
     valueLabel.setJustificationType(juce::Justification::centred);
-    valueLabel.setFont(monoFont(type::small));
+    setLabelFont(valueLabel, type::small, false, true);
     valueLabel.setEditable(false, true);
     valueLabel.onTextChange = [this] {
         fader.setValue(valueLabel.getText().retainCharacters("-0123456789.").getFloatValue(), juce::sendNotificationSync);
@@ -427,7 +433,7 @@ void MasterSection::paint(juce::Graphics& g)
     auto meter = meterArea();
     auto clip = getLocalBounds().withTrimmedTop(space::sectionHeader).reduced(space::sm, space::sm).removeFromTop(16);
     g.setColour(clipped ? colours::meterRed : colours::panelRaised);
-    g.fillRoundedRectangle(clip.toFloat(), 3.0f);
+    g.fillRoundedRectangle(clip.toFloat(), shape::r(3.0f));
     g.setColour(clipped ? colours::background : colours::textDim);
     g.setFont(font(type::caption, true));
     g.drawText("Clip", clip, juce::Justification::centred);
@@ -474,11 +480,40 @@ SettingsOverlay::SettingsOverlay(_3HSPlugAudioProcessor& p) : processor(p)
     addAndMakeVisible(closeButton);
 
     numChipsLabel.setText("Number of chips", juce::dontSendNotification);
-    numChipsLabel.setFont(font(type::body));
+    setLabelFont(numChipsLabel, type::body);
     addAndMakeVisible(numChipsLabel);
     for (int i = 1; i <= 16; ++i)
         numChipsBox.addItem(juce::String(i) + (i == 1 ? " chip" : " chips") + "  (" + juce::String(i * 8) + " FM voices)", i);
     numChipsBox.onChange = [this] { processor.setNumChips(numChipsBox.getSelectedId()); };
+
+    fontLabel.setText("UI font", juce::dontSendNotification);
+    setLabelFont(fontLabel, type::body);
+    addAndMakeVisible(fontLabel);
+    fontBox.addItemList(fontChoiceNames(), 1);
+    fontBox.setSelectedId(static_cast<int>(currentFontChoice()) + 1, juce::dontSendNotification);
+    fontBox.setTooltip("Saved for this computer and used by every 3HSPlug window");
+    fontBox.onChange = [this] {
+        setFontChoice(static_cast<FontChoice>(juce::jlimit(0, 2, fontBox.getSelectedId() - 1)));
+    };
+    addAndMakeVisible(fontBox);
+
+    themeLabel.setText("Theme", juce::dontSendNotification);
+    setLabelFont(themeLabel, type::body);
+    addAndMakeVisible(themeLabel);
+    themeBox.setTooltip("Saved for this computer and used by every 3HSPlug window");
+    themeBox.onChange = [this] {
+        const int index = themeBox.getSelectedId() - 1;
+        if (index >= 0 && index < themeNames.size())
+            selectTheme(themeNames[index]);
+        update();
+    };
+    addAndMakeVisible(themeBox);
+    themesFolderButton.setTooltip("Open the folder for your own theme files (*.json). A sample is written there the first time.");
+    themesFolderButton.onClick = [this] {
+        prepareUserThemesFolder().revealToUser();
+        reloadThemeList();
+    };
+    addAndMakeVisible(themesFolderButton);
     addAndMakeVisible(numChipsBox);
 
     pcOverrideToggle.onClick = [this] { processor.setPcOverrideEnabled(pcOverrideToggle.getToggleState()); };
@@ -486,7 +521,7 @@ SettingsOverlay::SettingsOverlay(_3HSPlugAudioProcessor& p) : processor(p)
 
     auto setupNumber = [this](juce::Slider& s, juce::Label& label, const juce::String& name, int maxValue) {
         label.setText(name, juce::dontSendNotification);
-        label.setFont(font(type::body));
+        setLabelFont(label, type::body);
         addAndMakeVisible(label);
         s.setSliderStyle(juce::Slider::IncDecButtons);
         s.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 50, space::control);
@@ -511,7 +546,7 @@ SettingsOverlay::SettingsOverlay(_3HSPlugAudioProcessor& p) : processor(p)
     addAndMakeVisible(pcmFolderButton);
     addAndMakeVisible(patchFolderButton);
 
-    infoLabel.setFont(monoFont(type::small));
+    setLabelFont(infoLabel, type::small, false, true);
     infoLabel.setJustificationType(juce::Justification::topLeft);
     infoLabel.setColour(juce::Label::textColourId, colours::textDim);
     addAndMakeVisible(infoLabel);
@@ -554,9 +589,37 @@ void SettingsOverlay::chooseAssetFolder(bool pcm)
         });
 }
 
+void SettingsOverlay::reloadThemeList()
+{
+    themeBox.clear(juce::dontSendNotification);
+    themeNames.clear();
+    themeErrors.clear();
+    int id = 1, selected = 1;
+    for (const auto& t : availableThemes()) {
+        themeNames.add(t.name);
+        juce::String item = t.name;
+        if (t.file != juce::File())
+            item << "  (" << t.file.getFileName() << ")";
+        if (t.loadError.isNotEmpty())
+            themeErrors.add(t.name + ": " + t.loadError);
+        themeBox.addItem(item, id);
+        if (t.name == currentThemeName())
+            selected = id;
+        ++id;
+    }
+    themeBox.setSelectedId(selected, juce::dontSendNotification);
+}
+
+void SettingsOverlay::lookAndFeelChanged()
+{
+    infoLabel.setColour(juce::Label::textColourId, colours::textDim);
+}
+
 void SettingsOverlay::open()
 {
+    reloadThemeList();
     numChipsBox.setSelectedId(processor.getNumChips(), juce::dontSendNotification);
+    fontBox.setSelectedId(static_cast<int>(currentFontChoice()) + 1, juce::dontSendNotification);
     pcOverrideToggle.setToggleState(processor.isPcOverrideEnabled(), juce::dontSendNotification);
     pcBankSlider.setValue(processor.getPcOverrideBank(), juce::dontSendNotification);
     pcProgramSlider.setValue(processor.getPcOverrideProgram(), juce::dontSendNotification);
@@ -589,12 +652,14 @@ void SettingsOverlay::update()
          << juce::String(pct(processor.getSynthProcessingTimeMs()), 1) << " %)\n"
          << "Patches       " << juce::String(processor.getPatchJsonPath()) << "\n"
          << "PCM           " << juce::String(processor.getPcmPath());
+    for (const auto& error : themeErrors)
+        info << "\nTheme file    " << error;
     infoLabel.setText(info, juce::dontSendNotification);
 }
 
 juce::Rectangle<int> SettingsOverlay::panelBounds() const
 {
-    return getLocalBounds().withSizeKeepingCentre(juce::jmin(560, getWidth() - 40), juce::jmin(560, getHeight() - 40));
+    return getLocalBounds().withSizeKeepingCentre(juce::jmin(560, getWidth() - 40), juce::jmin(660, getHeight() - 40));
 }
 
 void SettingsOverlay::paint(juce::Graphics& g)
@@ -602,9 +667,9 @@ void SettingsOverlay::paint(juce::Graphics& g)
     g.fillAll(colours::scrim);
     auto panel = panelBounds();
     g.setColour(colours::panel);
-    g.fillRoundedRectangle(panel.toFloat(), 8.0f);
+    g.fillRoundedRectangle(panel.toFloat(), shape::r(8.0f));
     g.setColour(colours::accent);
-    g.drawRoundedRectangle(panel.toFloat().reduced(0.5f), 8.0f, 1.0f);
+    g.drawRoundedRectangle(panel.toFloat().reduced(0.5f), shape::r(8.0f), 1.0f);
 
     auto area = panel.reduced(18, 14);
     g.setColour(colours::text);
@@ -621,6 +686,7 @@ void SettingsOverlay::paint(juce::Graphics& g)
     heading(numChipsLabel.getY() - 24, "Engine");
     heading(pcOverrideToggle.getY() - 24, "Program change");
     heading(pcmFolderButton.getY() - 24, "Asset folders");
+    heading(fontBox.getY() - 24, "Appearance");
     heading(gmResetButton.getY() - 24, "Reset");
     heading(infoLabel.getY() - 22, "Status");
 }
@@ -650,6 +716,17 @@ void SettingsOverlay::resized()
     pcmFolderButton.setBounds(row.removeFromLeft(130));
     row.removeFromLeft(space::sm);
     patchFolderButton.setBounds(row.removeFromLeft(130));
+
+    area.removeFromTop(space::xl + 6);
+    row = area.removeFromTop(space::control);
+    fontLabel.setBounds(row.removeFromLeft(140));
+    fontBox.setBounds(row.removeFromLeft(240));
+    area.removeFromTop(space::xs);
+    row = area.removeFromTop(space::control);
+    themeLabel.setBounds(row.removeFromLeft(140));
+    themeBox.setBounds(row.removeFromLeft(240));
+    row.removeFromLeft(space::sm);
+    themesFolderButton.setBounds(row.removeFromLeft(130));
 
     area.removeFromTop(space::xl + 6);
     row = area.removeFromTop(space::control);

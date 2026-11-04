@@ -75,7 +75,7 @@ void Knob::paint(juce::Graphics& g)
 {
     g.setColour(isEnabled() ? colours::textDim : colours::textDim.withAlpha(0.4f));
     g.setFont(font(type::caption, true));
-    g.drawText(name, getLocalBounds().removeFromTop(13), juce::Justification::centred);
+    g.drawFittedText(name, getLocalBounds().removeFromTop(13), juce::Justification::centred, 1, 0.7f); // 字幅の広いフォントでは縮める
 }
 
 void Knob::resized()
@@ -185,6 +185,11 @@ void OperatorPanel::setRole(bool isCarrier, bool isFeedbackTarget)
         return;
     carrier = isCarrier;
     feedbackTarget = isFeedbackTarget;
+    applyRoleColours();
+}
+
+void OperatorPanel::applyRoleColours()
+{
     const auto c = carrier ? colours::carrier : colours::modulator;
     for (auto* k : { &coarse, &fine, &level, &attack, &decay, &sustain, &release })
         k->slider.setColour(juce::Slider::rotarySliderFillColourId, c);
@@ -212,7 +217,7 @@ void OperatorPanel::paint(juce::Graphics& g)
     juce::String role = carrier ? "Carrier" : "Mod";
     if (feedbackTarget)
         role << " + FB";
-    g.drawText(role, header.removeFromLeft(64), juce::Justification::centredLeft);
+    g.drawFittedText(role, header.removeFromLeft(64), juce::Justification::centredLeft, 1, 0.7f);
 
     auto graph = graphArea().toFloat();
     if (graph.isEmpty())
@@ -226,7 +231,7 @@ void OperatorPanel::paint(juce::Graphics& g)
 void OperatorPanel::drawWave(juce::Graphics& g, juce::Rectangle<float> r) const
 {
     g.setColour(colours::background);
-    g.fillRoundedRectangle(r, 3.0f);
+    g.fillRoundedRectangle(r, shape::r(3.0f));
     const int wave = juce::jlimit(0, 15, waveBox.getSelectedId() - 1);
     const auto inner = r.reduced(3.0f, 4.0f);
     g.setColour(colours::outline);
@@ -244,7 +249,7 @@ void OperatorPanel::drawWave(juce::Graphics& g, juce::Rectangle<float> r) const
 void OperatorPanel::drawEnvelope(juce::Graphics& g, juce::Rectangle<float> r) const
 {
     g.setColour(colours::background);
-    g.fillRoundedRectangle(r, 3.0f);
+    g.fillRoundedRectangle(r, shape::r(3.0f));
     const int a = static_cast<int>(attack.slider.getValue());
     const int d = static_cast<int>(decay.slider.getValue());
     const int s = static_cast<int>(sustain.slider.getValue());
@@ -297,9 +302,9 @@ void OperatorPanel::drawEnvelope(juce::Graphics& g, juce::Rectangle<float> r) co
 
     g.setColour(colours::textDim);
     g.setFont(font(type::caption));
-    g.drawText("A " + formatSeconds(attackSeconds(a)) + "  D " + formatSeconds(decaySeconds(d))
+    g.drawFittedText("A " + formatSeconds(attackSeconds(a)) + "  D " + formatSeconds(decaySeconds(d))
                    + "  R " + formatSeconds(releaseSeconds(rl)),
-               r.reduced(4.0f, 1.0f), juce::Justification::topRight, false);
+               r.reduced(4.0f, 1.0f).toNearestInt(), juce::Justification::topRight, 1, 0.7f);
 }
 
 void OperatorPanel::resized()
@@ -347,8 +352,15 @@ PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p), dr
     addAndMakeVisible(fbDestBox);
     addAndMakeVisible(diagram);
 
-    feedback.slider.setRange(0, 255, 1);
-    feedback.slider.setDoubleClickReturnValue(true, 128);
+    // パッチの値は 0～255（128 でフィードバックなし）。ノブは 128 を引いた -128～127 で見せる。
+    feedback.slider.setRange(-128, 127, 1);
+    feedback.slider.setDoubleClickReturnValue(true, 0);
+    feedback.slider.textFromValueFunction = [](double v) {
+        const int n = juce::roundToInt(v);
+        return (n > 0 ? "+" : "") + juce::String(n);
+    };
+    feedback.slider.setTooltip("Feedback amount, -128 to +127 (0 = off). Double-click for 0.");
+    feedback.slider.updateText();
     feedback.slider.onValueChange = [this] { updateRoles(); pushEdit(); };
     addAndMakeVisible(feedback);
 
@@ -395,9 +407,9 @@ PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p), dr
     };
     addAndMakeVisible(saveButton);
 
-    programLabel.setFont(font(type::title, true));
+    setLabelFont(programLabel, type::title, true);
     addAndMakeVisible(programLabel);
-    statusLabel.setFont(font(type::small));
+    setLabelFont(statusLabel, type::small);
     statusLabel.setColour(juce::Label::textColourId, colours::textDim);
     addAndMakeVisible(statusLabel);
 
@@ -449,7 +461,7 @@ void PatchEditorPanel::loadFromProcessor()
     modeBox.setSelectedId(juce::jlimit(0, 12, static_cast<int>(patch.modmode)) + 1, juce::dontSendNotification);
     fbDestBox.setSelectedId(juce::jlimit(0, 7, static_cast<int>(patch.fbDest)) + 1, juce::dontSendNotification);
     if (!feedback.slider.isMouseButtonDown())
-        feedback.slider.setValue(patch.feedback, juce::dontSendNotification);
+        feedback.slider.setValue(static_cast<int>(patch.feedback) - 128, juce::dontSendNotification);
     if (!keyShift.slider.isMouseButtonDown())
         keyShift.slider.setValue(patch.keyShift, juce::dontSendNotification);
     for (size_t i = 0; i < operators.size(); ++i)
@@ -472,7 +484,7 @@ void PatchEditorPanel::pushEdit()
         return;
     patch.modmode = static_cast<uint8_t>(juce::jlimit(0, 12, modeBox.getSelectedId() - 1));
     patch.fbDest = static_cast<uint8_t>(juce::jlimit(0, 7, fbDestBox.getSelectedId() - 1));
-    patch.feedback = static_cast<uint8_t>(feedback.slider.getValue());
+    patch.feedback = static_cast<uint8_t>(juce::jlimit(0, 255, juce::roundToInt(feedback.slider.getValue()) + 128));
     patch.keyShift = static_cast<int8_t>(keyShift.slider.getValue());
     for (size_t i = 0; i < operators.size(); ++i)
         operators[i]->writeTo(patch.operators[i]);
@@ -494,7 +506,7 @@ void PatchEditorPanel::updateRoles()
     const int fbDest = juce::jlimit(0, 7, fbDestBox.getSelectedId() - 1);
     for (int i = 0; i < 8; ++i)
         operators[static_cast<size_t>(i)]->setRole(((algo::outputMask(mode) >> i) & 1u) != 0, i == fbDest);
-    diagram.setRouting(mode, fbDest, juce::roundToInt(feedback.slider.getValue()));
+    diagram.setRouting(mode, fbDest, juce::roundToInt(feedback.slider.getValue()) + 128);
 }
 
 void PatchEditorPanel::updateStatus()

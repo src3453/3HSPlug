@@ -228,9 +228,9 @@ void DrumKitPanel::paint(juce::Graphics& g)
     mem = mem.removeFromLeft(200);
     const float ratio = static_cast<float>(memoryUsed) / _3HSPlugAudioProcessor::drumMemoryCapacity;
     g.setColour(colours::background);
-    g.fillRoundedRectangle(bar, 3.0f);
+    g.fillRoundedRectangle(bar, shape::r(3.0f));
     g.setColour(ratio > 0.9f ? colours::meterRed : ratio > 0.7f ? colours::meterYellow : colours::accent);
-    g.fillRoundedRectangle(bar.withWidth(juce::jmax(2.0f, bar.getWidth() * ratio)), 3.0f);
+    g.fillRoundedRectangle(bar.withWidth(juce::jmax(2.0f, bar.getWidth() * ratio)), shape::r(3.0f));
     g.setColour(colours::text);
     g.setFont(monoFont(type::small));
     g.drawText(bytesText(memoryUsed) + " / 4.00 MB (" + juce::String(ratio * 100.0f, 1) + "%)",
@@ -245,10 +245,10 @@ void DrumKitPanel::paint(juce::Graphics& g)
 
         auto fill = s.assigned ? colours::panelRaised : colours::panel.darker(0.25f);
         g.setColour(fill);
-        g.fillRoundedRectangle(cell, 3.0f);
+        g.fillRoundedRectangle(cell, shape::r(3.0f));
         if (flash[static_cast<size_t>(note)] > 0.0f) {
             g.setColour(colours::accent.withAlpha(0.55f * flash[static_cast<size_t>(note)]));
-            g.fillRoundedRectangle(cell, 3.0f);
+            g.fillRoundedRectangle(cell, shape::r(3.0f));
         }
 
         auto text = cell.reduced(6.0f, 2.0f);
@@ -270,26 +270,26 @@ void DrumKitPanel::paint(juce::Graphics& g)
 
         if (s.missing) {
             g.setColour(colours::meterRed);
-            g.drawRoundedRectangle(cell, 3.0f, 1.0f);
+            g.drawRoundedRectangle(cell, shape::r(3.0f), 1.0f);
         }
         if (selected && showFocusRing) {
             drawFocusRing(g, cell.expanded(1.5f), 3.0f);
         } else if (note == dropNote) {
             g.setColour(colours::meterGreen);
-            g.drawRoundedRectangle(cell, 3.0f, 2.0f);
+            g.drawRoundedRectangle(cell, shape::r(3.0f), 2.0f);
         } else if (selected) {
             g.setColour(colours::accent);
-            g.drawRoundedRectangle(cell, 3.0f, 1.6f);
+            g.drawRoundedRectangle(cell, shape::r(3.0f), 1.6f);
         } else if (note == hoverNote) {
             g.setColour(colours::outline.brighter(0.4f));
-            g.drawRoundedRectangle(cell, 3.0f, 1.0f);
+            g.drawRoundedRectangle(cell, shape::r(3.0f), 1.0f);
         }
     }
 
     // 選択中のノートの詳細
     auto detail = detailArea();
     g.setColour(colours::panelRaised.withAlpha(0.5f));
-    g.fillRoundedRectangle(detail.toFloat(), 5.0f);
+    g.fillRoundedRectangle(detail.toFloat(), shape::r(5.0f));
     detail.reduce(10, 6);
     detail.removeFromRight(300); // ボタン
     const auto& s = slots[static_cast<size_t>(selectedNote)];
