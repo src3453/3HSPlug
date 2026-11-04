@@ -22,6 +22,25 @@
 
 ## Get started
 
+### Downloads and automated releases
+
+Download packaged builds from [GitHub Releases](https://github.com/src3453/3HSPlug/releases).
+Each ZIP includes the plugins, standalone application, patch banks, and PCM assets.
+Windows builds are x64; macOS builds are Universal (arm64 and x86_64).
+
+- **Release:** push a tag starting with `v`, such as `v0.0.1`. GitHub Actions builds and tests both platforms, then publishes the ZIPs with generated release notes. Re-running the workflow replaces assets for the same tag.
+- **Nightly:** the [Nightly pre-release](https://github.com/src3453/3HSPlug/releases/tag/nightly) is updated after successful builds on `main` pushes and daily at 03:17 JST (18:17 UTC). You can also run the **Build** workflow manually on `main`. The rolling `nightly` tag and ZIPs are replaced with the built commit; nightly is marked as a pre-release and does not become the latest stable release.
+- Pull requests build and test without publishing a release.
+
+To publish a version after the workflow is on GitHub:
+
+```sh
+git tag v0.0.1
+git push origin v0.0.1
+```
+
+Publishing uses the built-in `GITHUB_TOKEN`; no additional secret is needed.
+
 ### In a DAW
 
 1. Build the plugin or unpack a distribution, then install the complete `3HSPlug.vst3` bundle in your host's VST3 location. On macOS, you can also install `3HSPlug.component` in your Audio Units location.

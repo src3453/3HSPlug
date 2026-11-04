@@ -6,6 +6,9 @@ on:
     tags: ["v*"]
   pull_request:
     branches: [main]
+  schedule:
+    # 03:17 JST every day (UTC).
+    - cron: "17 18 * * *"
   workflow_dispatch:
 
 permissions:
@@ -98,7 +101,13 @@ jobs:
         shell: bash
         run: |
           art="build/3HSPlug_artefacts/$BUILD_CONFIG"
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="$GITHUB_REF_NAME"; else version="${GITHUB_SHA::7}"; fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="$GITHUB_REF_NAME"
+          elif [ "$GITHUB_REF" = refs/heads/main ] && [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            version=nightly
+          else
+            version="${GITHUB_SHA::7}"
+          fi
           name="3HSPlug-$version-${{ matrix.slug }}"
           stage="dist/$name"
           mkdir -p "$stage"
@@ -114,7 +123,7 @@ jobs:
             cp "$art/Standalone/3HSPlug.exe" "$stage/Standalone/"
           fi
           cp -R assets "$stage/assets"
-          cp README_AssetPaths.md LICENSE "$stage/"
+          cp README.md README_AssetPaths.md LICENSE "$stage/"
           if [ "$RUNNER_OS" = "macOS" ]; then
             (cd dist && ditto -c -k --keepParent "$name" "$name.zip")
           else
@@ -143,12 +152,65 @@ jobs:
           path: dist
           merge-multiple: true
 
-      - name: Create release
+      - name: Create or update release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           ls -l dist
-          gh release create "$GITHUB_REF_NAME" dist/*.zip \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "3HSPlug $GITHUB_REF_NAME" \
-            --generate-notes
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/*.zip \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" dist/*.zip \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "3HSPlug $GITHUB_REF_NAME" \
+              --generate-notes
+          fi
+
+  nightly:
+    name: Nightly pre-release
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: 3HSPlug-nightly-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Move only the rolling nightly tag to the commit actually built.
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/nightly" > /dev/null 2>&1; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/nightly" \
+              -f sha="$GITHUB_SHA" -F force=true
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+              -f ref=refs/tags/nightly -f sha="$GITHUB_SHA"
+          fi
+
+          cat > "$RUNNER_TEMP/nightly-notes.md" <<EOF
+          Automated development build from main. These files are replaced after each successful nightly build.
+
+          Commit: [$GITHUB_SHA](https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA)
+          Build: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+
+          Includes Windows x64 (VST3/Standalone) and macOS Universal (VST3/AU/Standalone), plus patches and PCM assets.
+          EOF
+
+          if gh release view nightly --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release upload nightly dist/*.zip --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit nightly --repo "$GITHUB_REPOSITORY" \
+              --title "3HSPlug Nightly" --notes-file "$RUNNER_TEMP/nightly-notes.md" \
+              --prerelease --latest=false
+          else
+            gh release create nightly dist/*.zip --repo "$GITHUB_REPOSITORY" \
+              --verify-tag --title "3HSPlug Nightly" \
+              --notes-file "$RUNNER_TEMP/nightly-notes.md" --prerelease --latest=false
+          fi
