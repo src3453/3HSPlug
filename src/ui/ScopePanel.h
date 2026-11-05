@@ -63,7 +63,6 @@ private:
 
     struct Cell {
         std::vector<float> raw = std::vector<float>(captureSamples, 0.0f);
-        std::vector<float> trig = std::vector<float>(captureSamples, 0.0f); // DC除去前の波形（トリガー判定用）
         std::vector<float> shown = std::vector<float>(captureSamples / 2, 0.0f);
         int shownCount = 0;
         bool valid = false;

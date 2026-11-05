@@ -322,14 +322,12 @@ void ScopePanel::timerCallback()
             if (c.valid) { c.valid = false; changed = true; }
             continue;
         }
-        // トリガー判定はDC除去前の波形で行い、表示はDC除去後の波形を使う
-        if (dcMode != DcMode::off) std::memcpy(c.trig.data(), c.raw.data(), static_cast<size_t>(capture) * sizeof(float));
-        if (dcMode == DcMode::mean) { // 平均値ベースのDC除去（表示用）
+        if (dcMode == DcMode::mean) { // 平均値ベースのDC除去（トリガー判定にも効く）
             double sum = 0.0;
             for (int s = 0; s < capture; ++s) sum += c.raw[static_cast<size_t>(s)];
             const float mean = static_cast<float>(sum / capture);
             for (int s = 0; s < capture; ++s) c.raw[static_cast<size_t>(s)] -= mean;
-        } else if (dcMode == DcMode::highPass) { // 出力段と同じハイパス（表示用）
+        } else if (dcMode == DcMode::highPass) { // 出力段と同じハイパス（トリガー判定にも効く）
             // 取得窓は連続ストリームではないので、毎回先頭サンプルの定常状態で状態を作り直す
             // （DC入力に対する出力は0）。先頭の過渡応答が表示に出ないようにする。
             double sr = processor.getSampleRate();
@@ -342,7 +340,7 @@ void ScopePanel::timerCallback()
             c.dcFilter.processSamples(c.raw.data(), capture);
         }
         size_t count = 0;
-        const size_t start = findScopeTrigger(dcMode != DcMode::off ? c.trig.data() : c.raw.data(), static_cast<size_t>(capture), count);
+        const size_t start = findScopeTrigger(c.raw.data(), static_cast<size_t>(capture), count);
         if (!c.valid || static_cast<int>(count) != c.shownCount
             || std::memcmp(c.shown.data(), c.raw.data() + start, count * sizeof(float)) != 0) {
             std::memcpy(c.shown.data(), c.raw.data() + start, count * sizeof(float));
