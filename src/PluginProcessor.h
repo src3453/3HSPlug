@@ -185,7 +185,7 @@ public:
     // ---- スコープ用（チャンネル別波形キャプチャ。ロックフリー） ----
     // フラット番号 = チップ * 12 + チャンネル（FM 0..7, PCM 8..11）。
     // オーディオスレッドは「表示中の範囲」だけリングバッファへ書き込む（wait-free、確保なし）。
-    static constexpr int scopeRingSize = 4096;            // 2のべき乗
+    static constexpr int scopeRingSize = 16384;           // 2のべき乗
     static constexpr int scopeChannelsPerChip = 12;
     static constexpr int scopeMaxChannels = 16 * scopeChannelsPerChip;
     // 取得対象を [first, first+count) にする。count=0 で取得停止（メッセージスレッドから呼ぶ）
