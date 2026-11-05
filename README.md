@@ -98,19 +98,17 @@ Without saved settings or environment variables, the defaults are `./pcm/` and `
 
 ## Build from source
 
-Requirements: CMake 3.22 or newer, a C++17 compiler, and JUCE in `lib/JUCE`. The CI workflow uses JUCE **8.0.8**. Windows builds require the Visual Studio C++ toolchain; macOS builds require Xcode command-line tools.
+Requirements: CMake 3.22 or newer, a C++17 compiler, and JUCE **8.0.8**, which is included as a Git submodule at `lib/JUCE`. Windows builds require the Visual Studio C++ toolchain; macOS builds require Xcode command-line tools.
 
-After cloning this repository, initialize dependencies:
+Clone with submodules, or initialize them after a plain clone:
 
 ```sh
+git clone --recurse-submodules https://github.com/src3453/3HSPlug.git
+# or, in an existing clone:
 git submodule update --init --recursive
 ```
 
-If `lib/JUCE/CMakeLists.txt` is still missing, fetch the version used by CI:
-
-```sh
-git clone --depth 1 --branch 8.0.8 https://github.com/juce-framework/JUCE.git lib/JUCE
-```
+The submodule is pinned to the `8.0.8` tag. To use a different JUCE version, check out that tag inside `lib/JUCE` and commit the updated submodule pointer.
 
 ### Windows
 
