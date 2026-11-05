@@ -348,7 +348,7 @@ void _3HSPlugAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlo
     dcHighPassFilters.clear();
     for (int i = 0; i < getTotalNumOutputChannels(); ++i) {
         juce::IIRFilter filter;
-        filter.setCoefficients(juce::IIRCoefficients::makeHighPass(sampleRate, 20.0));
+        filter.setCoefficients(makeDcHighPassCoefficients(sampleRate));
         dcHighPassFilters.push_back(filter);
     }
 }
