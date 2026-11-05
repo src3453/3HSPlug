@@ -3,6 +3,8 @@
 #include "UserSettings.h"
 #include <cstdlib>
 #include <cstring>
+#include <deque>
+#include <functional>
 
 namespace ui {
 namespace {
@@ -44,6 +46,50 @@ struct Canvas {
         }
     }
 };
+
+// Options 用のウィジェットパネル。ラベル + 選択ボックスを縦に並べる（テーマは LookAndFeel から適用される）。
+class OptionsPanel : public juce::Component
+{
+public:
+    struct Row {
+        const char* label;
+        juce::StringArray items;
+        int selectedId; // 1始まり
+        std::function<void(int)> onSelect;
+    };
+    explicit OptionsPanel(std::vector<Row> r) : rows(std::move(r))
+    {
+        for (auto& row : rows) {
+            auto& e = widgets.emplace_back();
+            e.label.setText(row.label, juce::dontSendNotification);
+            setLabelFont(e.label, type::small);
+            e.label.setColour(juce::Label::textColourId, colours::textDim);
+            e.label.setJustificationType(juce::Justification::centredLeft);
+            addAndMakeVisible(e.label);
+            for (int i = 0; i < row.items.size(); ++i) e.box.addItem(row.items[i], i + 1);
+            e.box.setSelectedId(row.selectedId, juce::dontSendNotification);
+            auto cb = row.onSelect;
+            auto* boxPtr = &e.box;
+            e.box.onChange = [cb, boxPtr] { cb(boxPtr->getSelectedId()); };
+            addAndMakeVisible(e.box);
+        }
+        setSize(260, space::md * 2 + static_cast<int>(rows.size()) * (space::control + space::xs));
+    }
+    void resized() override
+    {
+        auto area = getLocalBounds().reduced(space::md);
+        for (auto& e : widgets) {
+            auto line = area.removeFromTop(space::control);
+            area.removeFromTop(space::xs);
+            e.label.setBounds(line.removeFromLeft(90));
+            e.box.setBounds(line.reduced(0, 2));
+        }
+    }
+private:
+    struct Widgets { juce::Label label; juce::ComboBox box; };
+    std::vector<Row> rows;
+    std::deque<Widgets> widgets; // 要素のアドレスを安定させる
+};
 } // namespace
 
 ScopePanel::ScopePanel(_3HSPlugAudioProcessor& p) : processor(p)
@@ -64,116 +110,31 @@ ScopePanel::ScopePanel(_3HSPlugAudioProcessor& p) : processor(p)
     pageLabel.setJustificationType(juce::Justification::centred);
     pageLabel.setColour(juce::Label::textColourId, colours::text);
 
-    addAndMakeVisible(gainLabel);
-    gainLabel.setText("Gain", juce::dontSendNotification);
-    setLabelFont(gainLabel, type::small);
-    gainLabel.setColour(juce::Label::textColourId, colours::textDim);
-    gainLabel.setJustificationType(juce::Justification::centredRight);
+    addAndMakeVisible(optionsButton);
+    optionsButton.setTooltip("Scope options (View, Window, Gain, FPS, DC removal, Colour)");
+    optionsButton.setWantsKeyboardFocus(true);
+    optionsButton.onClick = [this] { showOptionsMenu(); };
 
-    addAndMakeVisible(gainBox);
-    gainBox.addItem("Auto", 1);
-    int id = 2;
-    for (int g : { 1, 2, 4, 8, 16, 32 }) gainBox.addItem("x" + juce::String(g), id++);
     {
-        const int savedGain = juce::jlimit(1, gainBox.getNumItems(), ui::userSettings().getIntValue(kGainKey, 1));
-        gainBox.setSelectedId(savedGain, juce::dontSendNotification);
-        gainSetting = savedGain <= 1 ? 0.0f : static_cast<float>(1 << (savedGain - 2));
+        auto& s = ui::userSettings();
+        gainId = juce::jlimit(1, 7, s.getIntValue(kGainKey, 1));
+        gainSetting = gainId <= 1 ? 0.0f : static_cast<float>(1 << (gainId - 2));
+
+        const int savedWin = s.getIntValue(kWindowKey, 20);
+        windowId = 3;
+        for (int i = 0; i < static_cast<int>(std::size(windowChoices)); ++i)
+            if (windowChoices[i] == savedWin) windowId = i + 1;
+        windowMs = windowChoices[windowId - 1];
+
+        viewMode = static_cast<ViewMode>(juce::jlimit(1, 2, s.getIntValue(kViewKey, 1)));
+        colourMode = static_cast<ColourMode>(juce::jlimit(1, 3, s.getIntValue(kColourKey, 1)));
+        dcMode = static_cast<DcMode>(juce::jlimit(0, 2, s.getIntValue(kDcKey, 0)));
+
+        const int savedFps = s.getIntValue(kFpsKey, 30);
+        fpsId = 4; // 30
+        for (int i = 0; i < static_cast<int>(std::size(fpsChoices)); ++i)
+            if (fpsChoices[i] == savedFps) fpsId = i + 1;
     }
-    gainBox.onChange = [this] {
-        const int sel = gainBox.getSelectedId();
-        gainSetting = sel <= 1 ? 0.0f : static_cast<float>(1 << (sel - 2));
-        ui::userSettings().setValue(kGainKey, sel);
-        ui::userSettings().saveIfNeeded();
-        repaint();
-    };
-
-    addAndMakeVisible(windowBox);
-    {
-        const int saved = ui::userSettings().getIntValue(kWindowKey, 20);
-        int selId = 3;
-        for (int i = 0; i < static_cast<int>(std::size(windowChoices)); ++i) {
-            windowBox.addItem(juce::String(windowChoices[i]) + " ms", i + 1);
-            if (windowChoices[i] == saved) selId = i + 1;
-        }
-        windowBox.setSelectedId(selId, juce::dontSendNotification);
-        windowMs = windowChoices[selId - 1];
-    }
-    windowBox.onChange = [this] {
-        windowMs = windowChoices[juce::jlimit(1, static_cast<int>(std::size(windowChoices)), windowBox.getSelectedId()) - 1];
-        ui::userSettings().setValue(kWindowKey, windowMs);
-        ui::userSettings().saveIfNeeded();
-        for (auto& c : cells) { c.valid = false; c.shownCount = 0; }
-        repaint();
-    };
-
-    auto setupLabel = [this](juce::Label& l, const char* text) {
-        addAndMakeVisible(l);
-        l.setText(text, juce::dontSendNotification);
-        setLabelFont(l, type::small);
-        l.setColour(juce::Label::textColourId, colours::textDim);
-        l.setJustificationType(juce::Justification::centredRight);
-    };
-    setupLabel(fpsLabel, "FPS");
-    setupLabel(dcLabel, "DC");
-    setupLabel(colourLabel, "Colour");
-    setupLabel(viewLabel, "View");
-    setupLabel(windowLabel, "Window");
-
-    addAndMakeVisible(viewBox);
-    viewBox.addItem("Voice", 1);
-    viewBox.addItem("MIDI channel", 2);
-    viewMode = static_cast<ViewMode>(juce::jlimit(1, 2, ui::userSettings().getIntValue(kViewKey, 1)));
-    viewBox.setSelectedId(static_cast<int>(viewMode), juce::dontSendNotification);
-    viewBox.onChange = [this] {
-        viewMode = static_cast<ViewMode>(juce::jlimit(1, 2, viewBox.getSelectedId()));
-        ui::userSettings().setValue(kViewKey, static_cast<int>(viewMode));
-        ui::userSettings().saveIfNeeded();
-        for (auto& c : cells) { c.valid = false; c.autoPeak = 0.05f; }
-        if (wasShowing) updateRange(true);
-        resized();
-        repaint();
-    };
-
-    addAndMakeVisible(colourBox);
-    colourBox.addItem("White", 1);
-    colourBox.addItem("Per voice", 2);
-    colourBox.addItem("Per MIDI channel", 3);
-    colourMode = static_cast<ColourMode>(juce::jlimit(1, 3, ui::userSettings().getIntValue(kColourKey, 1)));
-    colourBox.setSelectedId(static_cast<int>(colourMode), juce::dontSendNotification);
-    colourBox.onChange = [this] {
-        colourMode = static_cast<ColourMode>(juce::jlimit(1, 3, colourBox.getSelectedId()));
-        ui::userSettings().setValue(kColourKey, static_cast<int>(colourMode));
-        ui::userSettings().saveIfNeeded();
-        repaint();
-    };
-
-    addAndMakeVisible(fpsBox);
-    const int savedFps = ui::userSettings().getIntValue(kFpsKey, 30);
-    int fpsId = 4; // 30
-    for (int i = 0; i < static_cast<int>(std::size(fpsChoices)); ++i) {
-        fpsBox.addItem(juce::String(fpsChoices[i]), i + 1);
-        if (fpsChoices[i] == savedFps) fpsId = i + 1;
-    }
-    fpsBox.setSelectedId(fpsId, juce::dontSendNotification);
-    fpsBox.onChange = [this] {
-        const int fps = fpsChoices[juce::jlimit(1, static_cast<int>(std::size(fpsChoices)), fpsBox.getSelectedId()) - 1];
-        startTimerHz(fps);
-        ui::userSettings().setValue(kFpsKey, fps);
-        ui::userSettings().saveIfNeeded();
-    };
-
-    addAndMakeVisible(dcBox);
-    dcBox.addItem("Off", 1);
-    dcBox.addItem("Mean", 2);
-    dcBox.addItem("High-pass", 3);
-    dcMode = static_cast<DcMode>(juce::jlimit(0, 2, ui::userSettings().getIntValue(kDcKey, 0)));
-    dcBox.setSelectedId(static_cast<int>(dcMode) + 1, juce::dontSendNotification);
-    dcBox.onChange = [this] {
-        dcMode = static_cast<DcMode>(juce::jlimit(1, 3, dcBox.getSelectedId()) - 1);
-        for (auto& c : cells) { c.valid = false; c.dcFilter.reset(); c.dcSmoothedValid = false; } // 次の取得で作り直す
-        ui::userSettings().setValue(kDcKey, static_cast<int>(dcMode));
-        ui::userSettings().saveIfNeeded();
-    };
 
     startTimerHz(fpsChoices[fpsId - 1]);
 }
@@ -209,21 +170,94 @@ void ScopePanel::updateRange(bool showing)
         processor.setScopeRange(page * pageSize, showing ? pageSize : 0);
 }
 
+void ScopePanel::setGainId(int id)
+{
+    gainId = juce::jlimit(1, 7, id);
+    gainSetting = gainId <= 1 ? 0.0f : static_cast<float>(1 << (gainId - 2));
+    ui::userSettings().setValue(kGainKey, gainId);
+    ui::userSettings().saveIfNeeded();
+    repaint();
+}
+
+void ScopePanel::setWindowId(int id)
+{
+    windowId = juce::jlimit(1, static_cast<int>(std::size(windowChoices)), id);
+    windowMs = windowChoices[windowId - 1];
+    ui::userSettings().setValue(kWindowKey, windowMs);
+    ui::userSettings().saveIfNeeded();
+    for (auto& c : cells) { c.valid = false; c.shownCount = 0; }
+    repaint();
+}
+
+void ScopePanel::setViewMode(ViewMode m)
+{
+    viewMode = m;
+    ui::userSettings().setValue(kViewKey, static_cast<int>(viewMode));
+    ui::userSettings().saveIfNeeded();
+    for (auto& c : cells) { c.valid = false; c.autoPeak = 0.05f; }
+    if (wasShowing) updateRange(true);
+    resized();
+    repaint();
+}
+
+void ScopePanel::setColourMode(ColourMode m)
+{
+    colourMode = m;
+    ui::userSettings().setValue(kColourKey, static_cast<int>(colourMode));
+    ui::userSettings().saveIfNeeded();
+    repaint();
+}
+
+void ScopePanel::setFpsId(int id)
+{
+    fpsId = juce::jlimit(1, static_cast<int>(std::size(fpsChoices)), id);
+    const int fps = fpsChoices[fpsId - 1];
+    startTimerHz(fps);
+    ui::userSettings().setValue(kFpsKey, fps);
+    ui::userSettings().saveIfNeeded();
+}
+
+void ScopePanel::setDcMode(DcMode m)
+{
+    dcMode = m;
+    for (auto& c : cells) { c.valid = false; c.dcFilter.reset(); c.dcSmoothedValid = false; } // 次の取得で作り直す
+    ui::userSettings().setValue(kDcKey, static_cast<int>(dcMode));
+    ui::userSettings().saveIfNeeded();
+}
+
+// ページ切替は頻繁に触るのでヘッダーに残し、設定系の項目だけをOptionsパネルにまとめる。
+void ScopePanel::showOptionsMenu()
+{
+    juce::StringArray win, gain, fps;
+    for (int w : windowChoices) win.add(juce::String(w) + " ms");
+    gain.add("Auto");
+    for (int g : { 1, 2, 4, 8, 16, 32 }) gain.add("x" + juce::String(g));
+    for (int f : fpsChoices) fps.add(juce::String(f));
+
+    juce::Component::SafePointer<ScopePanel> s(this);
+    std::vector<OptionsPanel::Row> rows;
+    rows.push_back({ "View", { "Voice", "MIDI channel" }, static_cast<int>(viewMode),
+        [s](int id) { if (s) s->setViewMode(static_cast<ViewMode>(id)); } });
+    rows.push_back({ "Window", win, windowId, [s](int id) { if (s) s->setWindowId(id); } });
+    rows.push_back({ "Gain", gain, gainId, [s](int id) { if (s) s->setGainId(id); } });
+    rows.push_back({ "FPS", fps, fpsId, [s](int id) { if (s) s->setFpsId(id); } });
+    rows.push_back({ "DC removal", { "Off", "Mean", "High-pass" }, static_cast<int>(dcMode) + 1,
+        [s](int id) { if (s) s->setDcMode(static_cast<DcMode>(id - 1)); } });
+    rows.push_back({ "Colour", { "White", "Per voice", "Per MIDI channel" }, static_cast<int>(colourMode),
+        [s](int id) { if (s) s->setColourMode(static_cast<ColourMode>(id)); } });
+
+    auto content = std::make_unique<OptionsPanel>(std::move(rows));
+    content->setLookAndFeel(&getLookAndFeel());
+    auto& box = juce::CallOutBox::launchAsynchronously(std::move(content),
+        optionsButton.getScreenBounds(), nullptr);
+    box.setLookAndFeel(&getLookAndFeel());
+}
+
 void ScopePanel::resized()
 {
     auto area = getLocalBounds().reduced(space::sm);
     auto bar = area.removeFromTop(headerHeight - space::sm);
-    auto right = bar.removeFromRight(880);
-    auto place = [&right](juce::Label& l, juce::ComboBox& b, int boxW) {
-        b.setBounds(right.removeFromRight(boxW).reduced(0, 2));
-        l.setBounds(right.removeFromRight(juce::jmax(40, l.getFont().getStringWidth(l.getText()) + 8)));
-    };
-    place(colourLabel, colourBox, 140);
-    place(dcLabel, dcBox, 90);
-    place(fpsLabel, fpsBox, 70);
-    place(gainLabel, gainBox, 90);
-    place(windowLabel, windowBox, 80);
-    place(viewLabel, viewBox, 130);
+    optionsButton.setBounds(bar.removeFromRight(90).reduced(0, 2));
     prevButton.setBounds(bar.removeFromLeft(36).reduced(0, 2));
     pageLabel.setBounds(bar.removeFromLeft(190));
     nextButton.setBounds(bar.removeFromLeft(36).reduced(0, 2));
