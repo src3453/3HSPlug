@@ -11,7 +11,7 @@ constexpr int fpsChoices[] { 10, 15, 20, 30, 60, 120 };
 constexpr const char* kFpsKey = "scopeFps";
 constexpr const char* kColourKey = "scopeColourMode"; // 1 = 白, 2 = ボイスごと, 3 = MIDIチャンネルごと
 constexpr const char* kViewKey = "scopeViewMode"; // 1 = ボイスごと, 2 = MIDIチャンネルごと(ミックス)
-constexpr const char* kDcKey = "scopeDcRemoval"; // 0 = なし, 1 = 平均値ベース
+constexpr const char* kDcKey = "scopeDcRemoval"; // 0 = なし, 1 = 平均値ベース, 2 = ハイパス
 constexpr const char* kGainKey = "scopeGainId"; // ComboBox の ID（1 = Auto, 2.. = x1, x2, ...）
 constexpr const char* kWindowKey = "scopeWindowMs"; // 表示窓の時間幅(ms)
 constexpr int windowChoices[] { 5, 10, 20, 40, 80 };
@@ -165,12 +165,13 @@ ScopePanel::ScopePanel(_3HSPlugAudioProcessor& p) : processor(p)
     addAndMakeVisible(dcBox);
     dcBox.addItem("Off", 1);
     dcBox.addItem("Mean", 2);
-    removeDc = ui::userSettings().getIntValue(kDcKey, 0) == 1;
-    dcBox.setSelectedId(removeDc ? 2 : 1, juce::dontSendNotification);
+    dcBox.addItem("High-pass", 3);
+    dcMode = static_cast<DcMode>(juce::jlimit(0, 2, ui::userSettings().getIntValue(kDcKey, 0)));
+    dcBox.setSelectedId(static_cast<int>(dcMode) + 1, juce::dontSendNotification);
     dcBox.onChange = [this] {
-        removeDc = dcBox.getSelectedId() == 2;
-        for (auto& c : cells) c.valid = false; // 次の取得で作り直す
-        ui::userSettings().setValue(kDcKey, removeDc ? 1 : 0);
+        dcMode = static_cast<DcMode>(juce::jlimit(1, 3, dcBox.getSelectedId()) - 1);
+        for (auto& c : cells) { c.valid = false; c.dcFilter.reset(); } // 次の取得で作り直す
+        ui::userSettings().setValue(kDcKey, static_cast<int>(dcMode));
         ui::userSettings().saveIfNeeded();
     };
 
@@ -194,7 +195,7 @@ void ScopePanel::setPage(int newPage)
     newPage = juce::jlimit(0, numPages() - 1, newPage);
     if (newPage == page) return;
     page = newPage;
-    for (auto& c : cells) c.valid = false;
+    for (auto& c : cells) { c.valid = false; c.dcFilter.reset(); }
     if (wasShowing) updateRange(true);
     repaint();
 }
@@ -218,7 +219,7 @@ void ScopePanel::resized()
         l.setBounds(right.removeFromRight(juce::jmax(40, l.getFont().getStringWidth(l.getText()) + 8)));
     };
     place(colourLabel, colourBox, 140);
-    place(dcLabel, dcBox, 80);
+    place(dcLabel, dcBox, 90);
     place(fpsLabel, fpsBox, 70);
     place(gainLabel, gainBox, 90);
     place(windowLabel, windowBox, 80);
@@ -300,7 +301,7 @@ void ScopePanel::timerCallback()
     if (showing != wasShowing) {
         wasShowing = showing;
         updateRange(showing);
-        for (auto& c : cells) c.valid = false;
+        for (auto& c : cells) { c.valid = false; c.dcFilter.reset(); }
     }
     if (!showing) return;
 
@@ -321,11 +322,22 @@ void ScopePanel::timerCallback()
             if (c.valid) { c.valid = false; changed = true; }
             continue;
         }
-        if (removeDc) { // 平均値ベースのDC除去（トリガー判定にも効く）
+        if (dcMode == DcMode::mean) { // 平均値ベースのDC除去（トリガー判定にも効く）
             double sum = 0.0;
             for (int s = 0; s < capture; ++s) sum += c.raw[static_cast<size_t>(s)];
             const float mean = static_cast<float>(sum / capture);
             for (int s = 0; s < capture; ++s) c.raw[static_cast<size_t>(s)] -= mean;
+        } else if (dcMode == DcMode::highPass) { // 出力段と同じハイパス（トリガー判定にも効く）
+            // 取得窓は連続ストリームではないので、毎回先頭サンプルの定常状態で状態を作り直す
+            // （DC入力に対する出力は0）。先頭の過渡応答が表示に出ないようにする。
+            double sr = processor.getSampleRate();
+            if (sr <= 0.0) sr = 48000.0;
+            c.dcFilter.setCoefficients(_3HSPlugAudioProcessor::makeDcHighPassCoefficients(sr));
+            c.dcFilter.reset();
+            float primed = c.raw[0];
+            const int primeSamples = juce::roundToInt(sr * 0.1); // 20Hzの時定数の十分な倍数
+            for (int s = 0; s < primeSamples; ++s) { float v = primed; c.dcFilter.processSamples(&v, 1); }
+            c.dcFilter.processSamples(c.raw.data(), capture);
         }
         size_t count = 0;
         const size_t start = findScopeTrigger(c.raw.data(), static_cast<size_t>(capture), count);
