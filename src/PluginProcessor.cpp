@@ -1654,6 +1654,11 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
     
     lastProcessTime = processEndTime;
 }
+void _3HSPlugAudioProcessor::setScopeMidiMix(bool enabled) noexcept
+{
+    scopeMidiMix.store(enabled, std::memory_order_release);
+}
+
 void _3HSPlugAudioProcessor::setScopeRange(int first, int count) noexcept
 {
     scopeFirst.store(juce::jlimit(0, scopeMaxChannels, first), std::memory_order_relaxed);
@@ -1665,16 +1670,58 @@ void _3HSPlugAudioProcessor::captureScope(int chip, const std::vector<std::vecto
 {
     const int count = scopeCount.load(std::memory_order_acquire);
     const int first = scopeFirst.load(std::memory_order_relaxed);
-    if (chip == 0 && (count != scopeAudioCount || first != scopeAudioFirst)) {
+    const bool midiMix = scopeMidiMix.load(std::memory_order_acquire);
+    if (chip == 0 && (count != scopeAudioCount || first != scopeAudioFirst || midiMix != scopeAudioMidiMix)) {
         // 範囲が変わった: 古いリング内容を使わないよう、溜まり具合をリセット
         for (int i = 0; i < scopeMaxChannels; ++i)
             scopeFilled[static_cast<size_t>(i)].store(0, std::memory_order_relaxed);
         scopeAudioCount = count;
         scopeAudioFirst = first;
+        scopeAudioMidiMix = midiMix;
     }
     if (count <= 0 || frames.size() < 2) return;
     constexpr uint32_t mask = scopeRingSize - 1;
     constexpr float scale = 0.5f / 32768.0f;
+    if (midiMix) {
+        // MIDIチャンネル別ミックス: リング0..15へ加算。最後のチップで書き込み位置を公開する
+        const int nCh = juce::jmin(count, 16);
+        const auto len = static_cast<uint32_t>(length);
+        if (chip == 0) { // 今回ブロック分の領域をゼロクリア（公開前なので読み手には見えない）
+            for (int m = 0; m < nCh; ++m) {
+                float* ring = scopeRing.get() + static_cast<size_t>(m) * scopeRingSize;
+                const uint32_t pos = scopeWritePos[static_cast<size_t>(m)].load(std::memory_order_relaxed);
+                for (uint32_t i = 0; i < len; ++i) ring[(pos + i) & mask] = 0.0f;
+            }
+        }
+        for (int ch = 0; ch < scopeChannelsPerChip; ++ch) {
+            if (static_cast<size_t>(ch) >= frames[0].size()) continue;
+            int midiCh = 0;
+            if (ch < numVoices) {
+                const size_t idx = static_cast<size_t>(chip * numVoices + ch);
+                if (idx < voiceSlots.size()) midiCh = voiceSlots[idx].midiChannel;
+            } else {
+                const size_t idx = static_cast<size_t>(chip * 4 + (ch - numVoices));
+                if (idx < drumPcmChannelStates.size()) midiCh = drumPcmChannelStates[idx].midiChannel;
+            }
+            if (midiCh < 1 || midiCh > nCh) continue;
+            const float* l = frames[0][static_cast<size_t>(ch)].data();
+            const float* r = frames[1][static_cast<size_t>(ch)].data();
+            float* ring = scopeRing.get() + static_cast<size_t>(midiCh - 1) * scopeRingSize;
+            const uint32_t pos = scopeWritePos[static_cast<size_t>(midiCh - 1)].load(std::memory_order_relaxed);
+            for (uint32_t i = 0; i < len; ++i)
+                ring[(pos + i) & mask] += (l[i] + r[i]) * scale;
+        }
+        if (chip == numChips - 1) {
+            for (int m = 0; m < nCh; ++m) {
+                auto& wp = scopeWritePos[static_cast<size_t>(m)];
+                wp.store(wp.load(std::memory_order_relaxed) + len, std::memory_order_release);
+                auto& filled = scopeFilled[static_cast<size_t>(m)];
+                filled.store(static_cast<uint32_t>(juce::jmin<size_t>(scopeRingSize, filled.load(std::memory_order_relaxed) + length)),
+                             std::memory_order_release);
+            }
+        }
+        return;
+    }
     for (int ch = 0; ch < scopeChannelsPerChip; ++ch) {
         const int flat = chip * scopeChannelsPerChip + ch;
         if (flat < first || flat >= first + count || flat >= scopeMaxChannels) continue;
