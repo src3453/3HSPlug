@@ -72,6 +72,7 @@ private:
     void pushEdit();
     void updateRoles();
     void updateStatus();
+    void commitProgramEdit();
     juce::Rectangle<int> globalArea() const;
     juce::Rectangle<int> operatorsArea() const;
 
@@ -94,7 +95,8 @@ private:
     Knob keyShift { "Key shift" };
     juce::TextButton revertButton { "Revert" };
     juce::TextButton saveButton { "Save Bank" };
-    juce::Label programLabel;
+    juce::TextEditor programEdit; // "バンク:パッチ"。確定でバンクセレクト+プログラムチェンジを送る
+    juce::Label programLabel;   // GM音色名
     juce::Label statusLabel;
     DrumKitPanel drumKit;
     juce::String saveMessage;
