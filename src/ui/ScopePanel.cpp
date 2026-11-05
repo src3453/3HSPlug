@@ -12,6 +12,9 @@ constexpr const char* kFpsKey = "scopeFps";
 constexpr const char* kColourKey = "scopeColourMode"; // 1 = 白, 2 = ボイスごと, 3 = MIDIチャンネルごと
 constexpr const char* kViewKey = "scopeViewMode"; // 1 = ボイスごと, 2 = MIDIチャンネルごと(ミックス)
 constexpr const char* kDcKey = "scopeDcRemoval"; // 0 = なし, 1 = 平均値ベース
+constexpr const char* kGainKey = "scopeGainId"; // ComboBox の ID（1 = Auto, 2.. = x1, x2, ...）
+constexpr const char* kWindowKey = "scopeWindowMs"; // 表示窓の時間幅(ms)
+constexpr int windowChoices[] { 5, 10, 20, 40, 80 };
 
 // 1ピクセルを書く（範囲外は無視）。コンポーネントの背景は透明なので、不透明な色をそのまま書き込む。
 struct Canvas {
@@ -71,10 +74,35 @@ ScopePanel::ScopePanel(_3HSPlugAudioProcessor& p) : processor(p)
     gainBox.addItem("Auto", 1);
     int id = 2;
     for (int g : { 1, 2, 4, 8, 16, 32 }) gainBox.addItem("x" + juce::String(g), id++);
-    gainBox.setSelectedId(1, juce::dontSendNotification);
+    {
+        const int savedGain = juce::jlimit(1, gainBox.getNumItems(), ui::userSettings().getIntValue(kGainKey, 1));
+        gainBox.setSelectedId(savedGain, juce::dontSendNotification);
+        gainSetting = savedGain <= 1 ? 0.0f : static_cast<float>(1 << (savedGain - 2));
+    }
     gainBox.onChange = [this] {
         const int sel = gainBox.getSelectedId();
         gainSetting = sel <= 1 ? 0.0f : static_cast<float>(1 << (sel - 2));
+        ui::userSettings().setValue(kGainKey, sel);
+        ui::userSettings().saveIfNeeded();
+        repaint();
+    };
+
+    addAndMakeVisible(windowBox);
+    {
+        const int saved = ui::userSettings().getIntValue(kWindowKey, 20);
+        int selId = 3;
+        for (int i = 0; i < static_cast<int>(std::size(windowChoices)); ++i) {
+            windowBox.addItem(juce::String(windowChoices[i]) + " ms", i + 1);
+            if (windowChoices[i] == saved) selId = i + 1;
+        }
+        windowBox.setSelectedId(selId, juce::dontSendNotification);
+        windowMs = windowChoices[selId - 1];
+    }
+    windowBox.onChange = [this] {
+        windowMs = windowChoices[juce::jlimit(1, static_cast<int>(std::size(windowChoices)), windowBox.getSelectedId()) - 1];
+        ui::userSettings().setValue(kWindowKey, windowMs);
+        ui::userSettings().saveIfNeeded();
+        for (auto& c : cells) { c.valid = false; c.shownCount = 0; }
         repaint();
     };
 
@@ -89,6 +117,7 @@ ScopePanel::ScopePanel(_3HSPlugAudioProcessor& p) : processor(p)
     setupLabel(dcLabel, "DC");
     setupLabel(colourLabel, "Colour");
     setupLabel(viewLabel, "View");
+    setupLabel(windowLabel, "Window");
 
     addAndMakeVisible(viewBox);
     viewBox.addItem("Voice", 1);
@@ -183,7 +212,7 @@ void ScopePanel::resized()
 {
     auto area = getLocalBounds().reduced(space::sm);
     auto bar = area.removeFromTop(headerHeight - space::sm);
-    auto right = bar.removeFromRight(720);
+    auto right = bar.removeFromRight(880);
     auto place = [&right](juce::Label& l, juce::ComboBox& b, int boxW) {
         b.setBounds(right.removeFromRight(boxW).reduced(0, 2));
         l.setBounds(right.removeFromRight(juce::jmax(40, l.getFont().getStringWidth(l.getText()) + 8)));
@@ -192,11 +221,22 @@ void ScopePanel::resized()
     place(dcLabel, dcBox, 80);
     place(fpsLabel, fpsBox, 70);
     place(gainLabel, gainBox, 90);
+    place(windowLabel, windowBox, 80);
     place(viewLabel, viewBox, 130);
     prevButton.setBounds(bar.removeFromLeft(36).reduced(0, 2));
     pageLabel.setBounds(bar.removeFromLeft(190));
     nextButton.setBounds(bar.removeFromLeft(36).reduced(0, 2));
     for (auto* b : { &prevButton, &nextButton }) b->setVisible(!midiMode());
+}
+
+// 取得するサンプル数。表示サンプル数(窓)の2倍（トリガー探索に窓と同じ長さの余裕が要る）
+int ScopePanel::captureCount() const
+{
+    double sr = processor.getSampleRate();
+    if (sr <= 0.0) sr = 48000.0;
+    int shown = juce::roundToInt(windowMs * 0.001 * sr);
+    shown = juce::jlimit(64, captureSamples / 2, shown) & ~1; // 偶数
+    return shown * 2;
 }
 
 juce::Rectangle<int> ScopePanel::gridArea() const
@@ -273,21 +313,22 @@ void ScopePanel::timerCallback()
     nextButton.setEnabled(page < numPages() - 1);
 
     bool changed = false;
+    const int capture = captureCount();
     for (int i = 0; i < nCells; ++i) {
         auto& c = cells[static_cast<size_t>(i)];
-        const bool ok = processor.readScopeWindow(midiMode() ? i : page * pageSize + i, c.raw.data(), captureSamples);
+        const bool ok = processor.readScopeWindow(midiMode() ? i : page * pageSize + i, c.raw.data(), capture);
         if (!ok) {
             if (c.valid) { c.valid = false; changed = true; }
             continue;
         }
         if (removeDc) { // 平均値ベースのDC除去（トリガー判定にも効く）
             double sum = 0.0;
-            for (float v : c.raw) sum += v;
-            const float mean = static_cast<float>(sum / captureSamples);
-            for (float& v : c.raw) v -= mean;
+            for (int s = 0; s < capture; ++s) sum += c.raw[static_cast<size_t>(s)];
+            const float mean = static_cast<float>(sum / capture);
+            for (int s = 0; s < capture; ++s) c.raw[static_cast<size_t>(s)] -= mean;
         }
         size_t count = 0;
-        const size_t start = findScopeTrigger(c.raw.data(), captureSamples, count);
+        const size_t start = findScopeTrigger(c.raw.data(), static_cast<size_t>(capture), count);
         if (!c.valid || static_cast<int>(count) != c.shownCount
             || std::memcmp(c.shown.data(), c.raw.data() + start, count * sizeof(float)) != 0) {
             std::memcpy(c.shown.data(), c.raw.data() + start, count * sizeof(float));

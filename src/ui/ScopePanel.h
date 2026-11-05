@@ -14,7 +14,7 @@ class ScopePanel : public juce::Component, private juce::Timer
 {
 public:
     static constexpr int pageSize = _3HSPlugAudioProcessor::scopeChannelsPerChip; // 12
-    static constexpr int captureSamples = 2048; // トリガー探索用に取得する長さ
+    static constexpr int captureSamples = _3HSPlugAudioProcessor::scopeRingSize; // 取得長の上限（リングバッファ長）
     static constexpr int midiCells = 16; // MIDIチャンネル別ミックス表示は16セル（4x4）
     static constexpr int maxCells = midiCells > pageSize ? midiCells : pageSize;
 
@@ -44,8 +44,10 @@ private:
     _3HSPlugAudioProcessor& processor;
     juce::TextButton prevButton { "<" }, nextButton { ">" };
     juce::Label pageLabel, gainLabel;
-    juce::ComboBox gainBox, fpsBox, dcBox, colourBox, viewBox;
-    juce::Label fpsLabel, dcLabel, colourLabel, viewLabel;
+    juce::ComboBox gainBox, fpsBox, dcBox, colourBox, viewBox, windowBox;
+    juce::Label fpsLabel, dcLabel, colourLabel, viewLabel, windowLabel;
+    int windowMs = 20; // 表示窓の時間幅(ms)
+    int captureCount() const;
     enum class ViewMode { voice = 1, midiChannel };
     ViewMode viewMode = ViewMode::voice;
     enum class ColourMode { white = 1, voice, midiChannel };
@@ -59,8 +61,8 @@ private:
     juce::Image image;
 
     struct Cell {
-        std::array<float, captureSamples> raw {};
-        std::array<float, captureSamples / 2> shown {};
+        std::vector<float> raw = std::vector<float>(captureSamples, 0.0f);
+        std::vector<float> shown = std::vector<float>(captureSamples / 2, 0.0f);
         int shownCount = 0;
         bool valid = false;
         float autoPeak = 0.05f;
