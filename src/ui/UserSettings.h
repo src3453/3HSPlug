@@ -17,10 +17,24 @@ inline juce::PropertiesFile::Options userSettingsOptions()
     return options;
 }
 
+// PropertiesFile は juce::Timer を継承していて、破棄時に TimerThread の終了を無期限に待つことがある。
+// 関数内 static だと DLL の終了処理(ExitProcess の後)で破棄され、OS に殺されたスレッドを待ち続けて
+// プロセスが終わらなくなる(ビルド中の juce_vst3_helper が固まる)。
+// DeletedAtShutdown なら、スレッドが生きている JUCE の終了処理の中で破棄される。
+class UserSettingsHolder : private juce::DeletedAtShutdown
+{
+public:
+    UserSettingsHolder() : file(userSettingsOptions()) {}
+    ~UserSettingsHolder() override { clearSingletonInstance(); }
+
+    juce::PropertiesFile file;
+
+    JUCE_DECLARE_SINGLETON_INLINE(UserSettingsHolder, false)
+};
+
 inline juce::PropertiesFile& userSettings()
 {
-    static juce::PropertiesFile file(userSettingsOptions());
-    return file;
+    return UserSettingsHolder::getInstance()->file;
 }
 
 // Debugタブを表示するか
