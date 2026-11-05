@@ -407,6 +407,15 @@ PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p), dr
     };
     addAndMakeVisible(saveButton);
 
+    programEdit.setInputRestrictions(7, "0123456789:");
+    programEdit.setSelectAllWhenFocused(true);
+    programEdit.setJustification(juce::Justification::centred);
+    programEdit.setFont(monoFont(type::title));
+    programEdit.setTooltip("Bank:Patch (e.g. 000:001). Enter sends Bank Select + Program Change on this channel.");
+    programEdit.onReturnKey = [this] { commitProgramEdit(); };
+    programEdit.onFocusLost = [this] { updateStatus(); }; // 未確定の入力は元の値に戻す
+    programEdit.onEscapeKey = [this] { updateStatus(); programEdit.giveAwayKeyboardFocus(); };
+    addAndMakeVisible(programEdit);
     setLabelFont(programLabel, type::title, true);
     addAndMakeVisible(programLabel);
     setLabelFont(statusLabel, type::small);
@@ -500,6 +509,25 @@ void PatchEditorPanel::pushEdit()
     updateStatus();
 }
 
+void PatchEditorPanel::commitProgramEdit()
+{
+    const auto text = programEdit.getText().trim();
+    const int colon = text.indexOfChar(':');
+    int bank = -1, patch1 = -1;
+    if (colon > 0 && colon < text.length() - 1) {
+        const auto b = text.substring(0, colon), p = text.substring(colon + 1);
+        if (b.containsOnly("0123456789") && p.containsOnly("0123456789") && b.length() <= 3 && p.length() <= 3) {
+            bank = b.getIntValue();
+            patch1 = p.getIntValue();
+        }
+    }
+    if (bank >= 0 && bank <= 127 && patch1 >= 1 && patch1 <= 128) {
+        processor.sendProgramChange(channel, bank, patch1 - 1);
+        programEdit.giveAwayKeyboardFocus();
+    }
+    updateStatus(); // 不正入力・送信後は現在の値の表示に戻す（外部PCの反映はrefreshが行う）
+}
+
 void PatchEditorPanel::updateRoles()
 {
     const int mode = juce::jlimit(0, 12, modeBox.getSelectedId() - 1);
@@ -514,10 +542,11 @@ void PatchEditorPanel::updateStatus()
     const auto location = processor.getChannelPatchLocation(channel);
     const int prog = location.program;
     programLabel.setText(drumChannel ? "Drum Kit  (shared by all drum channels)"
-                                     : juce::String(location.bank).paddedLeft('0', 3) + ":"
-                                           + juce::String(prog + 1).paddedLeft('0', 3) + "  "
-                                           + (prog >= 0 && prog < 128 ? kGmNames[prog] : ""),
+                                     : (prog >= 0 && prog < 128 ? juce::String(kGmNames[prog]) : juce::String()),
                          juce::dontSendNotification);
+    programEdit.setText(juce::String(location.bank).paddedLeft('0', 3) + ":" + juce::String(prog + 1).paddedLeft('0', 3),
+                        juce::dontSendNotification);
+    programEdit.setEnabled(!drumChannel && !processor.isPcOverrideEnabled());
 
     juce::String status;
     juce::Colour colour = colours::textDim;
@@ -583,6 +612,8 @@ void PatchEditorPanel::resized()
     auto top = left.removeFromTop(space::control);
     channelBox.setBounds(top.removeFromLeft(84));
     top.removeFromLeft(space::md);
+    programEdit.setBounds(top.removeFromLeft(88));
+    top.removeFromLeft(space::sm);
     programLabel.setBounds(top);
     left.removeFromTop(space::xs);
     auto buttons = left.removeFromBottom(space::control);
