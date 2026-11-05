@@ -322,25 +322,24 @@ void ScopePanel::timerCallback()
             if (c.valid) { c.valid = false; changed = true; }
             continue;
         }
-        if (dcMode != DcMode::off) {
+        if (dcMode == DcMode::mean) { // 平均値ベースのDC除去（トリガー判定にも効く）
             double sum = 0.0;
             for (int s = 0; s < capture; ++s) sum += c.raw[static_cast<size_t>(s)];
             const float mean = static_cast<float>(sum / capture);
             // 補正値（平均）をフレーム間で指数移動平均し、縦方向の揺れを抑える
             c.dcSmoothed = c.dcSmoothedValid ? c.dcSmoothed + dcSmoothing * (mean - c.dcSmoothed) : mean;
             c.dcSmoothedValid = true;
-        }
-        if (dcMode == DcMode::mean) { // 平滑化した平均値でDC除去（トリガー判定にも効く）
             for (int s = 0; s < capture; ++s) c.raw[static_cast<size_t>(s)] -= c.dcSmoothed;
-        } else if (dcMode == DcMode::highPass) { // 低カットオフのハイパス（トリガー判定にも効く）
-            // 取得窓は連続ストリームではないので、毎回平滑化したDC値の定常状態で状態を作り直す。
-            // カットオフが低いので過渡応答がゆっくり減衰し、DC補正値が実質フレーム間で安定する。
+        } else if (dcMode == DcMode::highPass) { // 出力段と同じハイパス（トリガー判定にも効く）
+            // 取得窓は連続ストリームではないので、毎回先頭サンプルの定常状態で状態を作り直す
+            // （DC入力に対する出力は0）。先頭の過渡応答が表示に出ないようにする。
             double sr = processor.getSampleRate();
             if (sr <= 0.0) sr = 48000.0;
-            c.dcFilter.setCoefficients(juce::IIRCoefficients::makeHighPass(sr, scopeHighPassCutoffHz));
+            c.dcFilter.setCoefficients(_3HSPlugAudioProcessor::makeDcHighPassCoefficients(sr));
             c.dcFilter.reset();
-            const int primeSamples = juce::roundToInt(sr * 0.4); // 5Hzの時定数の十分な倍数
-            for (int s = 0; s < primeSamples; ++s) { float v = c.dcSmoothed; c.dcFilter.processSamples(&v, 1); }
+            float primed = c.raw[0];
+            const int primeSamples = juce::roundToInt(sr * 0.1); // 20Hzの時定数の十分な倍数
+            for (int s = 0; s < primeSamples; ++s) { float v = primed; c.dcFilter.processSamples(&v, 1); }
             c.dcFilter.processSamples(c.raw.data(), capture);
         }
         size_t count = 0;
