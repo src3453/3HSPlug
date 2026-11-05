@@ -184,6 +184,7 @@ public:
         setColour(juce::Label::textWhenEditingColourId, colours::text);
         setColour(juce::TextEditor::textColourId, colours::text);
         setColour(juce::TextEditor::highlightColourId, colours::accentDim);
+        setColour(juce::TextEditor::highlightedTextColourId, colours::text);
         setColour(juce::CaretComponent::caretColourId, colours::accent);
         setColour(juce::AlertWindow::backgroundColourId, colours::panel);
         setColour(juce::AlertWindow::textColourId, colours::text);

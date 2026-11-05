@@ -76,7 +76,8 @@ private:
     juce::Rectangle<int> globalArea() const;
     juce::Rectangle<int> operatorsArea() const;
 
-    static constexpr int kGlobalHeight = 3 * space::control + 2 * space::xs; // 3段: 名前と状態 / 経路図 / ボタン
+    static constexpr int kCaptionHeight = 14; // BANK/PATCH 見出しの高さ
+    static constexpr int kGlobalHeight = kCaptionHeight + 3 * space::control + 2 * space::xs; // 3段: 名前と状態 / 経路図 / ボタン
     static constexpr int kOpGap = 2 * space::md;
 
     _3HSPlugAudioProcessor& processor;
@@ -97,6 +98,7 @@ private:
     juce::TextButton saveButton { "Save Bank" };
     juce::TextEditor bankEdit;  // バンク(0～127)。確定でバンクセレクト+プログラムチェンジを送る
     juce::TextEditor patchEdit; // パッチ(1～128)
+    juce::Label bankCaption, patchCaption, colonLabel; // BANK / PATCH の見出しと区切りのコロン
     juce::Label programLabel;   // GM音色名（入力欄の下）
     juce::Label statusLabel;
     DrumKitPanel drumKit;
