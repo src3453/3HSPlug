@@ -8,10 +8,10 @@
 
 namespace ui {
 namespace {
-constexpr int headerHeight = 36;
+constexpr int headerHeight = space::control + space::sm;
 constexpr int fpsChoices[] { 10, 15, 20, 30, 60, 120 };
 constexpr const char* kFpsKey = "scopeFps";
-constexpr const char* kColourKey = "scopeColourMode"; // 1 = 白, 2 = ボイスごと, 3 = MIDIチャンネルごと
+constexpr const char* kColourKey = "scopeColourMode"; // 1 = 単色（テーマの文字色）, 2 = ボイスごと, 3 = MIDIチャンネルごと
 constexpr const char* kViewKey = "scopeViewMode"; // 1 = ボイスごと, 2 = MIDIチャンネルごと(ミックス)
 constexpr const char* kDcKey = "scopeDcRemoval"; // 0 = なし, 1 = 平均値ベース, 2 = ハイパス
 constexpr const char* kGainKey = "scopeGainId"; // ComboBox の ID（1 = Auto, 2.. = x1, x2, ...）
@@ -62,8 +62,7 @@ public:
         for (auto& row : rows) {
             auto& e = widgets.emplace_back();
             e.label.setText(row.label, juce::dontSendNotification);
-            setLabelFont(e.label, type::small);
-            e.label.setColour(juce::Label::textColourId, colours::textDim);
+            setLabelFont(e.label, type::small, false, false, true);
             e.label.setJustificationType(juce::Justification::centredLeft);
             addAndMakeVisible(e.label);
             for (int i = 0; i < row.items.size(); ++i) e.box.addItem(row.items[i], i + 1);
@@ -82,7 +81,7 @@ public:
             auto line = area.removeFromTop(space::control);
             area.removeFromTop(space::xs);
             e.label.setBounds(line.removeFromLeft(90));
-            e.box.setBounds(line.reduced(0, 2));
+            e.box.setBounds(line);
         }
     }
 private:
@@ -108,7 +107,6 @@ ScopePanel::ScopePanel(_3HSPlugAudioProcessor& p) : processor(p)
     addAndMakeVisible(pageLabel);
     setLabelFont(pageLabel, type::small, true, true);
     pageLabel.setJustificationType(juce::Justification::centred);
-    pageLabel.setColour(juce::Label::textColourId, colours::text);
 
     addAndMakeVisible(optionsButton);
     optionsButton.setTooltip("Scope options (View, Window, Gain, FPS, DC removal, Colour)");
@@ -243,24 +241,23 @@ void ScopePanel::showOptionsMenu()
     rows.push_back({ "FPS", fps, fpsId, [s](int id) { if (s) s->setFpsId(id); } });
     rows.push_back({ "DC removal", { "Off", "Mean", "High-pass" }, static_cast<int>(dcMode) + 1,
         [s](int id) { if (s) s->setDcMode(static_cast<DcMode>(id - 1)); } });
-    rows.push_back({ "Colour", { "White", "Per voice", "Per MIDI channel" }, static_cast<int>(colourMode),
+    rows.push_back({ "Colour", { "Single colour", "Per voice", "Per MIDI channel" }, static_cast<int>(colourMode),
         [s](int id) { if (s) s->setColourMode(static_cast<ColourMode>(id)); } });
 
-    auto content = std::make_unique<OptionsPanel>(std::move(rows));
-    content->setLookAndFeel(&getLookAndFeel());
-    auto& box = juce::CallOutBox::launchAsynchronously(std::move(content),
-        optionsButton.getScreenBounds(), nullptr);
-    box.setLookAndFeel(&getLookAndFeel());
+    // 画面の中の子として開く（親なしだとUIスケールが効かない）
+    auto& root = uiRoot(*this);
+    juce::CallOutBox::launchAsynchronously(std::make_unique<OptionsPanel>(std::move(rows)),
+        root.getLocalArea(&optionsButton, optionsButton.getLocalBounds()), &root);
 }
 
 void ScopePanel::resized()
 {
     auto area = getLocalBounds().reduced(space::sm);
     auto bar = area.removeFromTop(headerHeight - space::sm);
-    optionsButton.setBounds(bar.removeFromRight(90).reduced(0, 2));
-    prevButton.setBounds(bar.removeFromLeft(36).reduced(0, 2));
+    optionsButton.setBounds(bar.removeFromRight(96));
+    prevButton.setBounds(bar.removeFromLeft(space::control));
     pageLabel.setBounds(bar.removeFromLeft(190));
-    nextButton.setBounds(bar.removeFromLeft(36).reduced(0, 2));
+    nextButton.setBounds(bar.removeFromLeft(space::control));
     for (auto* b : { &prevButton, &nextButton }) b->setVisible(!midiMode());
 }
 
@@ -308,9 +305,9 @@ juce::Colour ScopePanel::cellColour(int cellIndex) const
             const int midiCh = midiMode() ? cellIndex + 1 : midiChannelFor(page * pageSize + cellIndex);
             return midiCh > 0 ? colours::forChannel(midiCh - 1) : colours::textDim; // 未使用は灰色
         }
-        case ColourMode::white: break;
+        case ColourMode::single: break;
     }
-    return juce::Colours::white;
+    return colours::text;
 }
 
 juce::String ScopePanel::midiChannelSubtitle(int midiCh) const
@@ -436,7 +433,7 @@ void ScopePanel::paint(juce::Graphics& g)
 {
     drawSection(g, getLocalBounds(), {});
     const auto grid = gridArea();
-    g.setColour(juce::Colours::black);
+    g.setColour(colours::background);
     g.fillRect(grid);
 
     const int nCells = cellCount(), cols = columns(), nRows = rows();
@@ -468,7 +465,6 @@ void ScopePanel::paint(juce::Graphics& g)
         g.drawText(midiMode() ? "CH" + juce::String(i + 1).paddedLeft('0', 2) : channelTitle(flat),
                    cell.reduced(6, 3).removeFromTop(17), juce::Justification::topLeft, false);
         g.setFont(monoFont(type::caption));
-        g.setColour(colour.withAlpha(0.85f));
         g.drawText(midiMode() ? midiChannelSubtitle(i + 1) : channelSubtitle(flat), cell.reduced(6, 3).withTrimmedTop(17).removeFromTop(14), juce::Justification::topLeft, true);
     }
 }

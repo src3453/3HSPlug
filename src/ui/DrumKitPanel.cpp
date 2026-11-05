@@ -34,6 +34,8 @@ juce::String bytesText(uint64_t bytes)
     return juce::String(bytes / 1024.0, 1) + " KB";
 }
 
+constexpr int kDetailHeight = 68; // 見出しと2行の情報
+
 const juce::String kAudioWildcard = "*.wav;*.aif;*.aiff;*.flac;*.ogg;*.mp3";
 
 bool isAudioFile(const juce::String& path)
@@ -54,18 +56,7 @@ bool DrumKitPanel::hasCustomAssignments() const
 void DrumKitPanel::confirm(const juce::String& title, const juce::String& text, const juce::String& action,
                            std::function<void()> onConfirm)
 {
-    const juce::Component::SafePointer<DrumKitPanel> safe(this);
-    juce::AlertWindow::showAsync(juce::MessageBoxOptions()
-                                     .withIconType(juce::MessageBoxIconType::WarningIcon)
-                                     .withTitle(title)
-                                     .withMessage(text)
-                                     .withButton(action)
-                                     .withButton("Cancel")
-                                     .withAssociatedComponent(this),
-                                 [safe, onConfirm](int result) {
-                                     if (safe != nullptr && result == 1)
-                                         onConfirm();
-                                 });
+    showConfirm(*this, title, text, action, std::move(onConfirm));
 }
 
 void DrumKitPanel::requestClear(int note)
@@ -190,12 +181,12 @@ juce::Rectangle<int> DrumKitPanel::memoryArea() const
 
 juce::Rectangle<int> DrumKitPanel::detailArea() const
 {
-    return getLocalBounds().removeFromBottom(64);
+    return getLocalBounds().removeFromBottom(kDetailHeight);
 }
 
 juce::Rectangle<int> DrumKitPanel::gridArea() const
 {
-    return getLocalBounds().withTrimmedTop(space::control + space::sm).withTrimmedBottom(64 + space::sm);
+    return getLocalBounds().withTrimmedTop(space::control + space::sm).withTrimmedBottom(kDetailHeight + space::sm);
 }
 
 juce::Rectangle<float> DrumKitPanel::cellBounds(int note) const
@@ -224,17 +215,17 @@ void DrumKitPanel::paint(juce::Graphics& g)
     g.setColour(colours::textDim);
     g.setFont(font(type::small, true));
     g.drawText("PCM memory", mem.removeFromLeft(90), juce::Justification::centredLeft);
-    auto bar = mem.removeFromLeft(juce::jlimit(60, 360, mem.getWidth() - 200)).reduced(0, 8).toFloat();
+    auto bar = mem.removeFromLeft(juce::jlimit(60, 360, mem.getWidth() - 200)).reduced(0, space::sm).toFloat();
     mem = mem.removeFromLeft(200);
     const float ratio = static_cast<float>(memoryUsed) / _3HSPlugAudioProcessor::drumMemoryCapacity;
     g.setColour(colours::background);
-    g.fillRoundedRectangle(bar, shape::r(3.0f));
-    g.setColour(ratio > 0.9f ? colours::meterRed : ratio > 0.7f ? colours::meterYellow : colours::accent);
-    g.fillRoundedRectangle(bar.withWidth(juce::jmax(2.0f, bar.getWidth() * ratio)), shape::r(3.0f));
+    g.fillRoundedRectangle(bar, shape::r(radius::data));
+    g.setColour(ratio > 0.9f ? colours::error : ratio > 0.7f ? colours::warning : colours::accent);
+    g.fillRoundedRectangle(bar.withWidth(juce::jmax(2.0f, bar.getWidth() * ratio)), shape::r(radius::data));
     g.setColour(colours::text);
     g.setFont(monoFont(type::small));
     g.drawText(bytesText(memoryUsed) + " / 4.00 MB (" + juce::String(ratio * 100.0f, 1) + "%)",
-               mem.withTrimmedLeft(8), juce::Justification::centredLeft);
+               mem.withTrimmedLeft(space::sm), juce::Justification::centredLeft);
 
     // ノートのグリッド
     for (int note = 0; note < 128; ++note) {
@@ -243,12 +234,11 @@ void DrumKitPanel::paint(juce::Graphics& g)
         const bool selected = note == selectedNote;
         const bool isC = note % 12 == 0;
 
-        auto fill = s.assigned ? colours::panelRaised : colours::panel.darker(0.25f);
-        g.setColour(fill);
-        g.fillRoundedRectangle(cell, shape::r(3.0f));
+        g.setColour(s.assigned ? colours::panelRaised : colours::background);
+        g.fillRoundedRectangle(cell, shape::r(radius::data));
         if (flash[static_cast<size_t>(note)] > 0.0f) {
-            g.setColour(colours::accent.withAlpha(0.55f * flash[static_cast<size_t>(note)]));
-            g.fillRoundedRectangle(cell, shape::r(3.0f));
+            g.setColour(colours::accent.withAlpha(alpha::flash * flash[static_cast<size_t>(note)]));
+            g.fillRoundedRectangle(cell, shape::r(radius::data));
         }
 
         auto text = cell.reduced(6.0f, 2.0f);
@@ -264,33 +254,32 @@ void DrumKitPanel::paint(juce::Graphics& g)
         else
             second = gmDrumName(note);
         // 既定（PCMフォルダ）は控えめ、自分で割り当てたファイルはアクセント（状態）で示す
-        g.setColour(s.missing ? colours::meterRed : (s.assigned && !s.isDefault) ? colours::accent : colours::textDim);
+        g.setColour(s.missing ? colours::error : (s.assigned && !s.isDefault) ? colours::accent : colours::textDim);
         g.setFont(font(type::caption));
         g.drawText(second, text.removeFromTop(lineH), juce::Justification::centredLeft, true);
 
         if (s.missing) {
-            g.setColour(colours::meterRed);
-            g.drawRoundedRectangle(cell, shape::r(3.0f), 1.0f);
+            g.setColour(colours::error);
+            g.drawRoundedRectangle(cell, shape::r(radius::data), stroke::hairline);
         }
-        if (selected && showFocusRing) {
-            drawFocusRing(g, cell.expanded(1.5f), 3.0f);
-        } else if (note == dropNote) {
-            g.setColour(colours::meterGreen);
-            g.drawRoundedRectangle(cell, shape::r(3.0f), 2.0f);
+        if (note == dropNote) {
+            g.setColour(colours::success);
+            g.drawRoundedRectangle(cell, shape::r(radius::data), stroke::focus);
         } else if (selected) {
-            g.setColour(colours::accent);
-            g.drawRoundedRectangle(cell, shape::r(3.0f), 1.6f);
+            drawSelection(g, cell, radius::data);
+            if (showFocusRing)
+                drawFocusRing(g, cell.expanded(1.5f), radius::data);
         } else if (note == hoverNote) {
-            g.setColour(colours::outline.brighter(0.4f));
-            g.drawRoundedRectangle(cell, shape::r(3.0f), 1.0f);
+            g.setColour(colours::fieldEdge);
+            g.drawRoundedRectangle(cell, shape::r(radius::data), stroke::hairline);
         }
     }
 
     // 選択中のノートの詳細
     auto detail = detailArea();
-    g.setColour(colours::panelRaised.withAlpha(0.5f));
-    g.fillRoundedRectangle(detail.toFloat(), shape::r(5.0f));
-    detail.reduce(10, 6);
+    g.setColour(colours::outline);
+    g.drawHorizontalLine(detail.getY(), static_cast<float>(detail.getX()), static_cast<float>(detail.getRight()));
+    detail.reduce(space::xs, space::sm);
     detail.removeFromRight(300); // ボタン
     const auto& s = slots[static_cast<size_t>(selectedNote)];
     const auto noteName = juce::MidiMessage::getMidiNoteName(selectedNote, true, true, 4);
@@ -303,10 +292,10 @@ void DrumKitPanel::paint(juce::Graphics& g)
 
     g.setFont(font(type::small));
     if (message.isNotEmpty()) {
-        g.setColour(messageIsError ? colours::meterRed : colours::accent);
+        g.setColour(messageIsError ? colours::error : colours::accent);
         g.drawText(message, detail.removeFromTop(16), juce::Justification::centredLeft, true);
     } else if (s.missing) {
-        g.setColour(colours::meterRed);
+        g.setColour(colours::error);
         g.drawText(s.error + ": " + s.file.getFullPathName(), detail.removeFromTop(16), juce::Justification::centredLeft, true);
     } else if (s.assigned) {
         g.setColour(colours::textDim);
@@ -330,21 +319,20 @@ void DrumKitPanel::resized()
 {
     auto top = memoryArea();
     resetButton.setBounds(top.removeFromRight(124));
-    top.removeFromRight(6);
+    top.removeFromRight(space::sm);
     saveKitButton.setBounds(top.removeFromRight(100));
-    top.removeFromRight(6);
+    top.removeFromRight(space::sm);
     loadKitButton.setBounds(top.removeFromRight(100));
     layoutDetailButtons();
 }
 
 void DrumKitPanel::layoutDetailButtons()
 {
-    auto buttons = detailArea().reduced(space::md, 0).withSizeKeepingCentre(detailArea().getWidth() - 2 * space::md, space::control)
-                       .removeFromRight(290);
+    auto buttons = detailArea().withSizeKeepingCentre(detailArea().getWidth(), space::control).removeFromRight(290);
     playButton.setBounds(buttons.removeFromRight(80));
-    buttons.removeFromRight(8);
+    buttons.removeFromRight(space::sm);
     clearButton.setBounds(buttons.removeFromRight(80));
-    buttons.removeFromRight(8);
+    buttons.removeFromRight(space::sm);
     assignButton.setBounds(buttons.removeFromRight(100));
 }
 

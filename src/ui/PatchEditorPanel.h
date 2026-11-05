@@ -76,7 +76,9 @@ private:
     juce::Rectangle<int> globalArea() const;
     juce::Rectangle<int> operatorsArea() const;
 
-    static constexpr int kCaptionHeight = 14; // BANK/PATCH 見出しの高さ
+    static constexpr int kCaptionHeight = 14; // Bank/Patch 見出しの高さ
+    static constexpr int kNameHeight = 20;    // パッチ名の高さ
+    static constexpr int kCompactOpsHeight = 360;
     static constexpr int kGlobalHeight = kCaptionHeight + 3 * space::control + 2 * space::xs; // 3段: 名前と状態 / 経路図 / ボタン
     static constexpr int kOpGap = 2 * space::md;
 

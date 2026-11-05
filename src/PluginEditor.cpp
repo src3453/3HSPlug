@@ -20,6 +20,16 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor(_3HSPlugAudioProcesso
     setLookAndFeel(&lookAndFeel);
     ui::appearanceChanged().addChangeListener(this);
 
+    // キーボードで移動したときは、待たずにツールチップを出す
+    focusRing.onKeyboardFocus = [this](juce::Component* focused) {
+        auto* client = dynamic_cast<juce::TooltipClient*>(focused);
+        const auto tip = client != nullptr ? client->getTooltip() : juce::String();
+        if (tip.isNotEmpty())
+            tooltipWindow.displayTip(focused->getScreenBounds().getBottomLeft(), tip);
+        else
+            tooltipWindow.hideTip();
+    };
+
     titleBar.onPanic = [this] { audioProcessor.allNotesOff(); };
     titleBar.onSettings = [this] { settings.open(); focusRing.toFront(false); };
     settings.onShowDebugTabChanged = [this](bool show) { setDebugTabVisible(show); };
@@ -34,19 +44,20 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor(_3HSPlugAudioProcesso
         tabs.setCurrentTabIndex(0);
     };
 
-    content.setComponentID("mainUI");
+    content.setComponentID(ui::kRootComponentId);
     addAndMakeVisible(content);
     content.addAndMakeVisible(titleBar);
     synthPage.addAndMakeVisible(channelActivity);
     synthPage.addAndMakeVisible(patchEditor);
     synthPage.addAndMakeVisible(voiceStatus);
-    tabs.setTabBarDepth(32);
+    tabs.setTabBarDepth(ui::space::control);
     tabs.setOutline(0);
-    tabs.addTab("Synth", ui::colours::panel, &synthPage, false);
-    tabs.addTab("Channels", ui::colours::panel, &channelStatus, false);
-    tabs.addTab("Scope", ui::colours::panel, &scope, false);
+    // タブページの地は background。区画（panel）はその上に載る
+    tabs.addTab("Synth", ui::colours::background, &synthPage, false);
+    tabs.addTab("Channels", ui::colours::background, &channelStatus, false);
+    tabs.addTab("Scope", ui::colours::background, &scope, false);
     if (ui::showDebugTab())
-        tabs.addTab("Debug", ui::colours::panel, &debugPanel, false);
+        tabs.addTab("Debug", ui::colours::background, &debugPanel, false);
     content.addAndMakeVisible(tabs);
     content.addAndMakeVisible(master);
     content.addChildComponent(settings);
@@ -78,7 +89,7 @@ void _3HSPlugAudioProcessorEditor::setDebugTabVisible(bool visible)
     for (int i = 0; i < tabs.getNumTabs(); ++i)
         if (tabs.getTabNames()[i] == "Debug") index = i;
     if (visible && index < 0) {
-        tabs.addTab("Debug", ui::colours::panel, &debugPanel, false);
+        tabs.addTab("Debug", ui::colours::background, &debugPanel, false);
         ui::refreshFonts(debugPanel);
         resized();
     } else if (!visible && index >= 0) {
@@ -113,7 +124,7 @@ void _3HSPlugAudioProcessorEditor::resized()
     tabs.setBounds(area);
     area = synthPage.getLocalBounds().withTrimmedTop(ui::space::sm);
 
-    channelActivity.setBounds(area.removeFromTop(area.getHeight() < 760 ? 112 : 152));
+    channelActivity.setBounds(area.removeFromTop(area.getHeight() < 760 ? 96 : 152));
     area.removeFromTop(ui::space::sm);
     voiceStatus.setBounds(area.removeFromBottom(voiceStatus.getPreferredHeight()));
     area.removeFromBottom(ui::space::sm);
@@ -132,7 +143,7 @@ void _3HSPlugAudioProcessorEditor::changeListenerCallback(juce::ChangeBroadcaste
     ui::refreshFonts(debugPanel);
     ui::refreshTheme(*this);
     for (int i = 0; i < tabs.getNumTabs(); ++i)
-        tabs.setTabBackgroundColour(i, ui::colours::panel);
+        tabs.setTabBackgroundColour(i, ui::colours::background);
 }
 
 void _3HSPlugAudioProcessorEditor::applyUIScale(float scale)

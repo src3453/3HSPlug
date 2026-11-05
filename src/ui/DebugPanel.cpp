@@ -52,7 +52,7 @@ void ChipRegisterGrid::paint(juce::Graphics& g)
     for (int row = first; row <= last; ++row) {
         const int y = 2 + row * rowHeight;
         if (row % 2 == 1) {
-            g.setColour(colours::panelRaised.withAlpha(0.35f));
+            g.setColour(colours::panelRaised.withAlpha(alpha::wash));
             g.fillRect(0, y, getWidth(), rowHeight);
         }
         g.setFont(mono);
@@ -65,10 +65,10 @@ void ChipRegisterGrid::paint(juce::Graphics& g)
             const size_t i = static_cast<size_t>(row * 16 + col);
             const int x = space::sm + addrW + nameW + 60 + col * cellW;
             if (flash[i] > 0.0f) {
-                g.setColour(colours::accent.withAlpha(0.65f * flash[i]));
-                g.fillRoundedRectangle(static_cast<float>(x), static_cast<float>(y + 1), cellW - 2.0f, rowHeight - 2.0f, 3.0f);
+                g.setColour(colours::accent.withAlpha(alpha::flash * flash[i]));
+                g.fillRoundedRectangle(static_cast<float>(x), static_cast<float>(y + 1), cellW - 2.0f, rowHeight - 2.0f, shape::r(radius::data));
             }
-            g.setColour(values[i] == 0 ? colours::textDim.withAlpha(0.6f) : colours::text);
+            g.setColour(values[i] == 0 ? colours::textDim : colours::text);
             g.drawText(juce::String::toHexString(values[i]).toUpperCase().paddedLeft('0', 2),
                        x, y, cellW - 2, rowHeight, juce::Justification::centred);
         }
@@ -78,7 +78,7 @@ void ChipRegisterGrid::paint(juce::Graphics& g)
 DebugPanel::DebugPanel(_3HSPlugAudioProcessor& p) : processor(p)
 {
     setTitle("Debug");
-    chipLabel.setText("Chip register view  -  chip", juce::dontSendNotification);
+    chipLabel.setText("Chip registers", juce::dontSendNotification);
     setLabelFont(chipLabel, type::body);
     addAndMakeVisible(chipLabel);
     chipBox.onChange = [this] { needsReset = true; update(); };
@@ -98,26 +98,34 @@ DebugPanel::DebugPanel(_3HSPlugAudioProcessor& p) : processor(p)
     logView.setMultiLine(true, false);
     logView.setReadOnly(true);
     logView.setScrollbarsShown(true);
-    logView.setFont(juce::FontOptions(juce::Font::getDefaultMonospacedFontName(), 12.0f, juce::Font::plain));
+    setEditorFont(logView, type::small);
+    lookAndFeelChanged();
     addAndMakeVisible(logView);
+}
+
+void DebugPanel::lookAndFeelChanged()
+{
+    logView.setTextToShowWhenEmpty("No log messages yet", colours::textDim);
 }
 
 void DebugPanel::paint(juce::Graphics& g)
 {
-    g.fillAll(colours::panel);
+    drawSection(g, getLocalBounds(), {});
 }
 
 void DebugPanel::resized()
 {
     auto area = getLocalBounds().reduced(space::sm);
     auto row = area.removeFromTop(space::control);
-    chipLabel.setBounds(row.removeFromLeft(200));
+    chipLabel.setBounds(row.removeFromLeft(120));
     chipBox.setBounds(row.removeFromLeft(120));
     area.removeFromTop(space::sm);
     auto logArea = area.removeFromBottom(juce::jmax(80, area.getHeight() / 3));
+    area.removeFromBottom(space::sm);
     viewport.setBounds(area);
     auto logRow = logArea.removeFromTop(space::control);
-    logLabel.setBounds(logRow.removeFromLeft(100));
+    logArea.removeFromTop(space::xs);
+    logLabel.setBounds(logRow.removeFromLeft(120));
     clearLogButton.setBounds(logRow.removeFromLeft(80));
     logView.setBounds(logArea);
     grid.setSize(juce::jmax(area.getWidth() - viewport.getScrollBarThickness(),

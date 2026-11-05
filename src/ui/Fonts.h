@@ -15,7 +15,7 @@ FontChoice currentFontChoice();
 void setFontChoice(FontChoice choice);         // 切り替えて設定ファイルに保存する
 juce::Typeface::Ptr customTypeface();          // システム標準のときは nullptr
 
-// 選んだフォントでUI全体を描き直す（ラベルのフォントを作り直し、LookAndFeel の変更を伝える）
+// 選んだフォントとテーマでUI全体を描き直す（ラベルと入力欄を作り直し、LookAndFeel の変更を伝える）
 void refreshFonts(juce::Component& root);
 
 } // namespace ui

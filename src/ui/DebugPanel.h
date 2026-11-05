@@ -28,6 +28,7 @@ public:
     explicit DebugPanel(_3HSPlugAudioProcessor&);
     void resized() override;
     void paint(juce::Graphics&) override;
+    void lookAndFeelChanged() override;
     void update(); // called from the UI timer while visible
     void updateLog();
 

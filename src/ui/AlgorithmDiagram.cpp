@@ -75,7 +75,7 @@ void AlgorithmDiagram::paint(juce::Graphics& g)
     auto bounds = getLocalBounds().toFloat();
 
     g.setColour(colours::background);
-    g.fillRoundedRectangle(bounds, shape::r(4.0f));
+    g.fillRoundedRectangle(bounds, shape::r(radius::data));
 
     auto area = bounds.reduced(8.0f, 4.0f);
     const float outW = 30.0f;
@@ -139,8 +139,8 @@ void AlgorithmDiagram::paint(juce::Graphics& g)
             const float frameW = ops.size() * boxW + (ops.size() - 1) * innerGap + 2.0f * framePad;
             const juce::Rectangle<float> frame(x, boxY - framePad, frameW, boxH + 2.0f * framePad);
             if (ops.size() > 1) {
-                g.setColour(colours::fieldEdge.withAlpha(0.6f));
-                g.drawRoundedRectangle(frame, shape::r(3.0f), 1.0f);
+                g.setColour(colours::fieldEdge);
+                g.drawRoundedRectangle(frame, shape::r(radius::data), stroke::hairline);
             }
             float bx = x + framePad;
             for (int op : ops) {
@@ -148,9 +148,9 @@ void AlgorithmDiagram::paint(juce::Graphics& g)
                 const bool isOutput = (outputs >> op) & 1u;
                 const auto role = isOutput ? colours::carrier : colours::modulator;
                 g.setColour(colours::panelRaised);
-                g.fillRoundedRectangle(box, shape::r(2.5f));
+                g.fillRoundedRectangle(box, shape::r(radius::cell));
                 g.setColour(role);
-                g.drawRoundedRectangle(box.reduced(0.5f), shape::r(2.5f), 1.2f);
+                g.drawRoundedRectangle(box.reduced(0.5f), shape::r(radius::cell), stroke::selected);
                 g.setColour(colours::text);
                 g.setFont(font(juce::jmin(type::small, boxH - 1.0f), true));
                 g.drawText(juce::String(op + 1), box, juce::Justification::centred, false);
@@ -161,7 +161,7 @@ void AlgorithmDiagram::paint(juce::Graphics& g)
                     const float lx0 = box.getRight() - 3.0f, lx1 = box.getX() + 3.0f, ly = box.getY();
                     loop.startNewSubPath(lx0, ly);
                     loop.cubicTo(lx0, ly - loopH, lx1, ly - loopH, lx1, ly - 1.0f);
-                    g.setColour(feedbackOn ? colours::text : colours::textDim.withAlpha(0.6f));
+                    g.setColour(feedbackOn ? colours::text : colours::textDim);
                     g.strokePath(loop, juce::PathStrokeType(1.3f));
                     juce::Path head;
                     head.addTriangle(lx1, ly, lx1 - 3.0f, ly - 4.0f, lx1 + 3.0f, ly - 4.0f);

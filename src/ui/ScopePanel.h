@@ -42,7 +42,7 @@ private:
     juce::Colour cellColour(int cellIndex) const;
 
     enum class ViewMode { voice = 1, midiChannel };
-    enum class ColourMode { white = 1, voice, midiChannel };
+    enum class ColourMode { single = 1, voice, midiChannel };
     enum class DcMode { off = 0, mean = 1, highPass = 2 }; // 設定値と対応（旧: 0=なし,1=平均値）
     _3HSPlugAudioProcessor& processor;
     juce::TextButton prevButton { "<" }, nextButton { ">" };
@@ -62,7 +62,7 @@ private:
     int windowMs = 20; // 表示窓の時間幅(ms)
     int captureCount() const;
     ViewMode viewMode = ViewMode::voice;
-    ColourMode colourMode = ColourMode::white;
+    ColourMode colourMode = ColourMode::single;
     std::array<juce::Colour, maxCells> cellColours;
     DcMode dcMode = DcMode::off;
     // Mean用DC補正値のフレーム間平滑化（指数移動平均）。1.0で平滑化なし、小さいほど滑らか。

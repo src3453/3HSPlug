@@ -18,7 +18,8 @@ struct ThemeData {
     juce::String loadError;    // 読めなかったときの理由
 
     juce::Colour background, panel, panelRaised, outline, fieldEdge, text, textDim, accent, accentDim, onAccent,
-        focusRing, carrier, modulator, meterGreen, meterYellow, meterRed, meterRms, scrim, lcdBack, lcdOn, lcdOff;
+        focusRing, carrier, modulator, meterGreen, meterYellow, meterRed, meterRms, scrim, lcdBack, lcdOn, lcdOff,
+        keyWhite, keyBlack;
 
     float roundness = 1.0f;
     int knob = 0;              // shape::Knob
@@ -32,6 +33,7 @@ struct ThemeData {
 
 // 同梱テーマのあとにユーザーのテーマが続く。ユーザーのテーマは呼ぶたびにフォルダから読み直す。
 juce::Array<ThemeData> availableThemes();
+float contrastRatio(juce::Colour a, juce::Colour b); // WCAG のコントラスト比
 juce::String currentThemeName();
 void selectTheme(const juce::String& name);   // 適用して保存し、開いている画面に知らせる
 void applySavedTheme();                        // 起動時: 保存されているテーマを適用する（見つからなければ既定）
