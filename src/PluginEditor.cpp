@@ -52,6 +52,11 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor(_3HSPlugAudioProcesso
     content.addChildComponent(settings);
     content.addAndMakeVisible(focusRing); // いちばん上（設定画面の上にも描く）
 
+    // 親に入れる前に作られたスライダーの数値欄・ボタン等を、このエディタのLookAndFeelで作り直す
+    ui::refreshFonts(content);
+    ui::refreshFonts(synthPage);
+    ui::refreshFonts(debugPanel);
+
     laidOutChips = audioProcessor.getNumChips();
     setResizable(true, true);
     setResizeLimits(1000, 800, 2560, 1600);
