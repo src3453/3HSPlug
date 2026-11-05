@@ -1,3 +1,4 @@
+#include "DebugLog.h"
 #include "PluginEditor.h"
 #include "ui/UIScale.h"
 #include <iostream>
@@ -136,6 +137,19 @@ int main(int argc, char** argv)
             processor.processBlock(audio, midi);
             check(processor.readChannelStatus(state), "Snapshot failed");
         };
+        // ログの %s と非ASCII文字が化けないこと (Debugタブに表示される文字列)
+        check(dbglog::format("[MIDI] SysEx: %s", "7E 7F 09 01 ") == "[MIDI] SysEx: 7E 7F 09 01 ", "Log %s formatting");
+        check(dbglog::format("A\xE2\x86\x92%02X", 0xAB) == juce::String::fromUTF8("A\xE2\x86\x92") + "AB", "Log UTF-8 format string");
+        check(dbglog::format("%s", "A\xFF") == "A?", "Log invalid UTF-8");
+        {
+            const juce::uint8 gmReset[] = { 0x7E, 0x7F, 0x09, 0x01 };
+            dbglog::Log::instance().clear();
+            send(juce::MidiMessage::createSysExMessage(gmReset, 4));
+            bool logged = false;
+            for (const auto& entry : dbglog::Log::instance().getEntriesAfter(0))
+                logged = logged || entry.text == "[MIDI] SysEx: 7E 7F 09 01";
+            check(logged, "SysEx log text");
+        }
         send(juce::MidiMessage::controllerEvent(1, 7, 83));
         check(state[0].controllers[7] == 83 && state[1].controllers[7] == 127, "CC isolation");
         send(juce::MidiMessage::controllerEvent(1, 0, 8));
