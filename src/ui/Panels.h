@@ -130,6 +130,7 @@ private:
     juce::Label themeLabel;
     juce::ComboBox themeBox;
     juce::ToggleButton showDebugToggle { "Show Debug tab" };
+    juce::ToggleButton consoleLogToggle { "Log to console (stderr)" };
     juce::TextButton themesFolderButton { "Themes folder..." };
     juce::StringArray themeNames, themeErrors;
     void reloadThemeList();

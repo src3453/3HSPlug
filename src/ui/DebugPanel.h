@@ -1,6 +1,7 @@
 #pragma once
 #include "../PluginProcessor.h"
 #include "Theme.h"
+#include "../DebugLog.h"
 
 namespace ui {
 // Debug tab: Chip Register View. Hex dump of the chip register memory (0x400000-0x4003FF).
@@ -28,6 +29,7 @@ public:
     void resized() override;
     void paint(juce::Graphics&) override;
     void update(); // called from the UI timer while visible
+    void updateLog();
 
 private:
     _3HSPlugAudioProcessor& processor;
@@ -35,6 +37,10 @@ private:
     juce::ComboBox chipBox;
     juce::Viewport viewport;
     ChipRegisterGrid grid;
+    juce::Label logLabel;
+    juce::TextButton clearLogButton { "Clear" };
+    juce::TextEditor logView;
+    juce::int64 lastLogId = 0;
     int shownChips = 0;
     bool needsReset = true;
 };
