@@ -55,10 +55,8 @@ private:
     std::array<juce::Colour, maxCells> cellColours;
     enum class DcMode { off = 0, mean = 1, highPass = 2 }; // 設定値と対応（旧: 0=なし,1=平均値）
     DcMode dcMode = DcMode::off;
-    // DC補正値のフレーム間平滑化（指数移動平均）。1.0で平滑化なし、小さいほど滑らか。
+    // Mean用DC補正値のフレーム間平滑化（指数移動平均）。1.0で平滑化なし、小さいほど滑らか。
     static constexpr float dcSmoothing = 0.1f;
-    // Scope表示用High-passのカットオフ(Hz)。出力段(20Hz)より低くして縦揺れを抑える。
-    static constexpr double scopeHighPassCutoffHz = 5.0;
 
     int page = 0;
     bool wasShowing = false;
@@ -71,7 +69,7 @@ private:
         int shownCount = 0;
         bool valid = false;
         juce::IIRFilter dcFilter; // High-pass用（チャンネルごと）
-        float dcSmoothed = 0.0f;  // 平滑化したDC補正値
+        float dcSmoothed = 0.0f;  // Mean用に平滑化したDC補正値
         bool dcSmoothedValid = false;
         float autoPeak = 0.05f;
     };
