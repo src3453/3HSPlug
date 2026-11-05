@@ -22,6 +22,14 @@ inline juce::PropertiesFile& userSettings()
     return file;
 }
 
+// Debugタブを表示するか
+inline bool showDebugTab() { return userSettings().getBoolValue("showDebugTab", false); }
+inline void setShowDebugTab(bool show)
+{
+    userSettings().setValue("showDebugTab", show);
+    userSettings().saveIfNeeded();
+}
+
 // ユーザーのテーマファイル（*.json）を置くフォルダ
 inline juce::File userThemesFolder()
 {

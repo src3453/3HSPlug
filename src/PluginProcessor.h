@@ -135,6 +135,9 @@ public:
     double getCpuUsagePercent() const { return cpuUsagePercent; }
     double getMidiProcessingTimeMs() const { return midiProcessingTimeMs; }
     double getSynthProcessingTimeMs() const { return synthProcessingTimeMs; }
+    // デバッグ表示用: チップのレジスタメモリ(0x400000-0x4003FF)のコピー
+    static constexpr int chipRegisterBytes = 0x400;
+    bool getChipRegisters(int chip, std::array<uint8_t, chipRegisterBytes>& out) const;
     std::vector<std::vector<float>> getChipAudioDataL(int chip) const;
     std::vector<std::vector<float>> getChipAudioDataR(int chip) const;
 
