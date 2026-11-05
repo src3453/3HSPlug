@@ -1,5 +1,6 @@
 // CommandLineArgs.cpp
 #include "CommandLineArgs.h"
+#include "DebugLog.h"
 #include <iostream>
 #include <cstring>
 
@@ -39,9 +40,9 @@ bool CommandLineArgs::parse(int argc, char* argv[]) {
                 if (!pcmPath.empty() && pcmPath.back() != '/' && pcmPath.back() != '\\') {
                     pcmPath += "/";
                 }
-                std::cout << "[CommandLineArgs] PCM path set to: " << pcmPath << std::endl;
+                S3_LOG("[CommandLineArgs] PCM path set to: %s", juce::String(pcmPath).toRawUTF8());
             } else {
-                std::cerr << "[CommandLineArgs] Error: --pcm-path requires a path argument" << std::endl;
+                S3_ERR("[CommandLineArgs] Error: --pcm-path requires a path argument");
                 valid = false;
                 return false;
             }
@@ -52,9 +53,9 @@ bool CommandLineArgs::parse(int argc, char* argv[]) {
         if (arg == "--patch-json") {
             if (i + 1 < argc) {
                 patchJsonPath = argv[++i];
-                std::cout << "[CommandLineArgs] Patch JSON path set to: " << patchJsonPath << std::endl;
+                S3_LOG("[CommandLineArgs] Patch JSON path set to: %s", juce::String(patchJsonPath).toRawUTF8());
             } else {
-                std::cerr << "[CommandLineArgs] Error: --patch-json requires a path argument" << std::endl;
+                S3_ERR("[CommandLineArgs] Error: --patch-json requires a path argument");
                 valid = false;
                 return false;
             }
@@ -63,7 +64,7 @@ bool CommandLineArgs::parse(int argc, char* argv[]) {
         
         // 不明な引数
         if (arg.substr(0, 2) == "--") {
-            std::cerr << "[CommandLineArgs] Warning: Unknown argument: " << arg << std::endl;
+            S3_WARN("[CommandLineArgs] Warning: Unknown argument: %s", juce::String(arg).toRawUTF8());
         }
     }
     
