@@ -72,10 +72,31 @@ private:
     std::atomic<bool> consoleFlag { false };
 };
 
+// printf 形式の書式化。juce::String::formatted は Windows ではワイド版 printf を使うため、
+// %s の char* が wchar_t* として読まれて文字化けする上、書式文字列の非ASCII文字も壊れる。
+// ここではナロー版で書式化し、結果を UTF-8 として解釈する。
+template <typename... Args>
+inline juce::String format(const char* fmt, Args... args)
+{
+    const int length = std::snprintf(nullptr, 0, fmt, args...);
+    if (length <= 0) return {};
+
+    std::vector<char> buffer(static_cast<size_t>(length) + 1);
+    std::snprintf(buffer.data(), buffer.size(), fmt, args...);
+
+    // SysEx 由来のテキストなど、UTF-8 として不正なバイト列は '?' に置き換える
+    if (!juce::CharPointer_UTF8::isValidString(buffer.data(), length))
+        for (int i = 0; i < length; ++i)
+            if (static_cast<unsigned char>(buffer[static_cast<size_t>(i)]) >= 0x80)
+                buffer[static_cast<size_t>(i)] = '?';
+
+    return juce::String::fromUTF8(buffer.data(), length);
+}
+
 template <typename... Args>
 inline void write(Level level, const char* fmt, Args... args)
 {
-    Log::instance().add(level, juce::String::formatted(fmt, args...));
+    Log::instance().add(level, format(fmt, args...));
 }
 
 } // namespace dbglog
