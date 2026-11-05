@@ -2139,6 +2139,15 @@ juce::Result _3HSPlugAudioProcessor::saveDrumKitFile(const juce::File& file) con
     return drumKit.saveKitFile(file);
 }
 
+void _3HSPlugAudioProcessor::sendProgramChange(int midiChannel, int bank, int program)
+{
+    if (midiChannel < 1 || midiChannel > 16)
+        return;
+    const juce::SpinLock::ScopedLockType ml(uiMidiLock);
+    uiMidi.addEvent(juce::MidiMessage::controllerEvent(midiChannel, 0, juce::jlimit(0, 127, bank)), 0);
+    uiMidi.addEvent(juce::MidiMessage::programChange(midiChannel, juce::jlimit(0, 127, program)), 0);
+}
+
 void _3HSPlugAudioProcessor::auditionDrum(int note, int velocity)
 {
     const juce::SpinLock::ScopedLockType ml(uiMidiLock);

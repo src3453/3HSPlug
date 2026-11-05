@@ -407,6 +407,19 @@ PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p), dr
     };
     addAndMakeVisible(saveButton);
 
+    auto setupProgramEdit = [this](juce::TextEditor& e, const juce::String& tip) {
+        e.setInputRestrictions(3, "0123456789");
+        e.setSelectAllWhenFocused(true);
+        e.setJustification(juce::Justification::centred);
+        e.setFont(monoFont(type::title));
+        e.setTooltip(tip + " Enter sends Bank Select + Program Change on this channel.");
+        e.onReturnKey = [this] { commitProgramEdit(); };
+        e.onFocusLost = [this] { if (!bankEdit.hasKeyboardFocus(true) && !patchEdit.hasKeyboardFocus(true)) updateStatus(); };
+        e.onEscapeKey = [this, &e] { updateStatus(); e.giveAwayKeyboardFocus(); };
+        addAndMakeVisible(e);
+    };
+    setupProgramEdit(bankEdit, "Bank (0-127).");
+    setupProgramEdit(patchEdit, "Patch (1-128).");
     setLabelFont(programLabel, type::title, true);
     addAndMakeVisible(programLabel);
     setLabelFont(statusLabel, type::small);
@@ -500,6 +513,22 @@ void PatchEditorPanel::pushEdit()
     updateStatus();
 }
 
+void PatchEditorPanel::commitProgramEdit()
+{
+    const auto b = bankEdit.getText().trim(), p = patchEdit.getText().trim();
+    int bank = -1, patch1 = -1;
+    if (b.isNotEmpty() && p.isNotEmpty() && b.containsOnly("0123456789") && p.containsOnly("0123456789")) {
+        bank = b.getIntValue();
+        patch1 = p.getIntValue();
+    }
+    if (bank >= 0 && bank <= 127 && patch1 >= 1 && patch1 <= 128) {
+        processor.sendProgramChange(channel, bank, patch1 - 1);
+        bankEdit.giveAwayKeyboardFocus();
+        patchEdit.giveAwayKeyboardFocus();
+    }
+    updateStatus(); // 不正入力・送信後は現在の値の表示に戻す（外部PCの反映はrefreshが行う）
+}
+
 void PatchEditorPanel::updateRoles()
 {
     const int mode = juce::jlimit(0, 12, modeBox.getSelectedId() - 1);
@@ -514,10 +543,13 @@ void PatchEditorPanel::updateStatus()
     const auto location = processor.getChannelPatchLocation(channel);
     const int prog = location.program;
     programLabel.setText(drumChannel ? "Drum Kit  (shared by all drum channels)"
-                                     : juce::String(location.bank).paddedLeft('0', 3) + ":"
-                                           + juce::String(prog + 1).paddedLeft('0', 3) + "  "
-                                           + (prog >= 0 && prog < 128 ? kGmNames[prog] : ""),
+                                     : (prog >= 0 && prog < 128 ? juce::String(kGmNames[prog]) : juce::String()),
                          juce::dontSendNotification);
+    bankEdit.setText(juce::String(location.bank).paddedLeft('0', 3), juce::dontSendNotification);
+    patchEdit.setText(juce::String(prog + 1).paddedLeft('0', 3), juce::dontSendNotification);
+    const bool editable = !drumChannel && !processor.isPcOverrideEnabled();
+    bankEdit.setEnabled(editable);
+    patchEdit.setEnabled(editable);
 
     juce::String status;
     juce::Colour colour = colours::textDim;
@@ -583,13 +615,16 @@ void PatchEditorPanel::resized()
     auto top = left.removeFromTop(space::control);
     channelBox.setBounds(top.removeFromLeft(84));
     top.removeFromLeft(space::md);
-    programLabel.setBounds(top);
+    bankEdit.setBounds(top.removeFromLeft(56));
+    top.removeFromLeft(space::sm);
+    patchEdit.setBounds(top.removeFromLeft(56));
     left.removeFromTop(space::xs);
+    programLabel.setBounds(left.removeFromTop(20));
     auto buttons = left.removeFromBottom(space::control);
     revertButton.setBounds(buttons.removeFromLeft(96));
     buttons.removeFromLeft(space::sm);
     saveButton.setBounds(buttons.removeFromLeft(104));
-    statusLabel.setBounds(left.withSizeKeepingCentre(left.getWidth(), 20));
+    statusLabel.setBounds(left);
     global.removeFromLeft(space::md);
 
     auto combos = global.removeFromLeft(global.getWidth() > 760 ? 200 : 176);
