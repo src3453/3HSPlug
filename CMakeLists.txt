@@ -62,6 +62,7 @@ target_sources(3HSPlug
         src/PluginEditor.cpp
         src/ui/Panels.cpp
         src/ui/ChannelStatusPanel.cpp
+        src/ui/DebugPanel.cpp
         src/ui/ScopePanel.cpp
         src/ui/PatchEditorPanel.cpp
         src/ui/DrumKitPanel.cpp
