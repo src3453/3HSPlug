@@ -41,19 +41,29 @@ private:
     int midiChannelFor(int flat) const;
     juce::Colour cellColour(int cellIndex) const;
 
+    enum class ViewMode { voice = 1, midiChannel };
+    enum class ColourMode { white = 1, voice, midiChannel };
+    enum class DcMode { off = 0, mean = 1, highPass = 2 }; // 設定値と対応（旧: 0=なし,1=平均値）
     _3HSPlugAudioProcessor& processor;
     juce::TextButton prevButton { "<" }, nextButton { ">" };
-    juce::Label pageLabel, gainLabel;
-    juce::ComboBox gainBox, fpsBox, dcBox, colourBox, viewBox, windowBox;
-    juce::Label fpsLabel, dcLabel, colourLabel, viewLabel, windowLabel;
+    juce::Label pageLabel;
+    juce::TextButton optionsButton { "Options" };
+    // Options ポップアップ（View / Window / Gain / FPS / DC removal / Colour）
+    void showOptionsMenu();
+    void setGainId(int id);
+    void setWindowId(int id);
+    void setViewMode(ViewMode m);
+    void setColourMode(ColourMode m);
+    void setFpsId(int id);
+    void setDcMode(DcMode m);
+    int gainId = 1;   // 1 = Auto, 2.. = x1, x2, ...
+    int windowId = 3; // windowChoices の1始まり添字
+    int fpsId = 4;    // fpsChoices の1始まり添字
     int windowMs = 20; // 表示窓の時間幅(ms)
     int captureCount() const;
-    enum class ViewMode { voice = 1, midiChannel };
     ViewMode viewMode = ViewMode::voice;
-    enum class ColourMode { white = 1, voice, midiChannel };
     ColourMode colourMode = ColourMode::white;
     std::array<juce::Colour, maxCells> cellColours;
-    enum class DcMode { off = 0, mean = 1, highPass = 2 }; // 設定値と対応（旧: 0=なし,1=平均値）
     DcMode dcMode = DcMode::off;
     // Mean用DC補正値のフレーム間平滑化（指数移動平均）。1.0で平滑化なし、小さいほど滑らか。
     static constexpr float dcSmoothing = 0.1f;
