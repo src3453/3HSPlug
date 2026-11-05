@@ -3,6 +3,8 @@
 #include "UserSettings.h"
 #include <cstdlib>
 #include <cstring>
+#include <deque>
+#include <functional>
 
 namespace ui {
 namespace {
@@ -43,6 +45,50 @@ struct Canvas {
             if (e2 <= dx) { err += dx; y0 += sy; }
         }
     }
+};
+
+// Options 用のウィジェットパネル。ラベル + 選択ボックスを縦に並べる（テーマは LookAndFeel から適用される）。
+class OptionsPanel : public juce::Component
+{
+public:
+    struct Row {
+        const char* label;
+        juce::StringArray items;
+        int selectedId; // 1始まり
+        std::function<void(int)> onSelect;
+    };
+    explicit OptionsPanel(std::vector<Row> r) : rows(std::move(r))
+    {
+        for (auto& row : rows) {
+            auto& e = widgets.emplace_back();
+            e.label.setText(row.label, juce::dontSendNotification);
+            setLabelFont(e.label, type::small);
+            e.label.setColour(juce::Label::textColourId, colours::textDim);
+            e.label.setJustificationType(juce::Justification::centredLeft);
+            addAndMakeVisible(e.label);
+            for (int i = 0; i < row.items.size(); ++i) e.box.addItem(row.items[i], i + 1);
+            e.box.setSelectedId(row.selectedId, juce::dontSendNotification);
+            auto cb = row.onSelect;
+            auto* boxPtr = &e.box;
+            e.box.onChange = [cb, boxPtr] { cb(boxPtr->getSelectedId()); };
+            addAndMakeVisible(e.box);
+        }
+        setSize(260, space::md * 2 + static_cast<int>(rows.size()) * (space::control + space::xs));
+    }
+    void resized() override
+    {
+        auto area = getLocalBounds().reduced(space::md);
+        for (auto& e : widgets) {
+            auto line = area.removeFromTop(space::control);
+            area.removeFromTop(space::xs);
+            e.label.setBounds(line.removeFromLeft(90));
+            e.box.setBounds(line.reduced(0, 2));
+        }
+    }
+private:
+    struct Widgets { juce::Label label; juce::ComboBox box; };
+    std::vector<Row> rows;
+    std::deque<Widgets> widgets; // 要素のアドレスを安定させる
 };
 } // namespace
 
@@ -179,44 +225,32 @@ void ScopePanel::setDcMode(DcMode m)
     ui::userSettings().saveIfNeeded();
 }
 
-// ページ切替は頻繁に触るのでヘッダーに残し、設定系の項目だけをポップアップにまとめる。
+// ページ切替は頻繁に触るのでヘッダーに残し、設定系の項目だけをOptionsパネルにまとめる。
 void ScopePanel::showOptionsMenu()
 {
-    juce::PopupMenu menu;
-    auto radioSub = [](const juce::StringArray& names, int current, int baseId) {
-        juce::PopupMenu sub;
-        for (int i = 0; i < names.size(); ++i)
-            sub.addItem(baseId + i, names[i], true, current == i);
-        return sub;
-    };
-    // ID レンジ: View 100.., Window 200.., Gain 300.., FPS 400.., DC 500.., Colour 600..
-    menu.addSubMenu("View", radioSub({ "Voice", "MIDI channel" }, static_cast<int>(viewMode) - 1, 100));
     juce::StringArray win, gain, fps;
     for (int w : windowChoices) win.add(juce::String(w) + " ms");
     gain.add("Auto");
     for (int g : { 1, 2, 4, 8, 16, 32 }) gain.add("x" + juce::String(g));
     for (int f : fpsChoices) fps.add(juce::String(f));
-    menu.addSubMenu("Window", radioSub(win, windowId - 1, 200));
-    menu.addSubMenu("Gain", radioSub(gain, gainId - 1, 300));
-    menu.addSubMenu("FPS", radioSub(fps, fpsId - 1, 400));
-    menu.addSubMenu("DC removal", radioSub({ "Off", "Mean", "High-pass" }, static_cast<int>(dcMode), 500));
-    menu.addSubMenu("Colour", radioSub({ "White", "Per voice", "Per MIDI channel" }, static_cast<int>(colourMode) - 1, 600));
 
-    juce::Component::SafePointer<ScopePanel> safe(this);
-    menu.showMenuAsync(juce::PopupMenu::Options().withTargetComponent(&optionsButton),
-        [safe](int r) {
-            if (safe == nullptr || r == 0) return;
-            const int group = r / 100, idx = r % 100;
-            switch (group) {
-                case 1: safe->setViewMode(static_cast<ViewMode>(idx + 1)); break;
-                case 2: safe->setWindowId(idx + 1); break;
-                case 3: safe->setGainId(idx + 1); break;
-                case 4: safe->setFpsId(idx + 1); break;
-                case 5: safe->setDcMode(static_cast<DcMode>(idx)); break;
-                case 6: safe->setColourMode(static_cast<ColourMode>(idx + 1)); break;
-                default: break;
-            }
-        });
+    juce::Component::SafePointer<ScopePanel> s(this);
+    std::vector<OptionsPanel::Row> rows;
+    rows.push_back({ "View", { "Voice", "MIDI channel" }, static_cast<int>(viewMode),
+        [s](int id) { if (s) s->setViewMode(static_cast<ViewMode>(id)); } });
+    rows.push_back({ "Window", win, windowId, [s](int id) { if (s) s->setWindowId(id); } });
+    rows.push_back({ "Gain", gain, gainId, [s](int id) { if (s) s->setGainId(id); } });
+    rows.push_back({ "FPS", fps, fpsId, [s](int id) { if (s) s->setFpsId(id); } });
+    rows.push_back({ "DC removal", { "Off", "Mean", "High-pass" }, static_cast<int>(dcMode) + 1,
+        [s](int id) { if (s) s->setDcMode(static_cast<DcMode>(id - 1)); } });
+    rows.push_back({ "Colour", { "White", "Per voice", "Per MIDI channel" }, static_cast<int>(colourMode),
+        [s](int id) { if (s) s->setColourMode(static_cast<ColourMode>(id)); } });
+
+    auto content = std::make_unique<OptionsPanel>(std::move(rows));
+    content->setLookAndFeel(&getLookAndFeel());
+    auto& box = juce::CallOutBox::launchAsynchronously(std::move(content),
+        optionsButton.getScreenBounds(), nullptr);
+    box.setLookAndFeel(&getLookAndFeel());
 }
 
 void ScopePanel::resized()
