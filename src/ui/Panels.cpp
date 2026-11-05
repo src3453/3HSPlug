@@ -536,6 +536,11 @@ SettingsOverlay::SettingsOverlay(_3HSPlugAudioProcessor& p) : processor(p)
     };
     addAndMakeVisible(showDebugToggle);
 
+    consoleLogToggle.setToggleState(consoleLogEnabled(), juce::dontSendNotification);
+    consoleLogToggle.setTooltip("Also print log messages to the console. The log is always shown in the Debug tab");
+    consoleLogToggle.onClick = [this] { setConsoleLogEnabled(consoleLogToggle.getToggleState()); };
+    addAndMakeVisible(consoleLogToggle);
+
     themeLabel.setText("Theme", juce::dontSendNotification);
     setLabelFont(themeLabel, type::body);
     addAndMakeVisible(themeLabel);
@@ -663,6 +668,7 @@ void SettingsOverlay::open()
     fontBox.setSelectedId(static_cast<int>(currentFontChoice()) + 1, juce::dontSendNotification);
     scaleBox.setSelectedId(currentUIScalePercent(), juce::dontSendNotification);
     showDebugToggle.setToggleState(showDebugTab(), juce::dontSendNotification);
+    consoleLogToggle.setToggleState(consoleLogEnabled(), juce::dontSendNotification);
     pcOverrideToggle.setToggleState(processor.isPcOverrideEnabled(), juce::dontSendNotification);
     pcBankSlider.setValue(processor.getPcOverrideBank(), juce::dontSendNotification);
     pcProgramSlider.setValue(processor.getPcOverrideProgram(), juce::dontSendNotification);
@@ -781,6 +787,7 @@ void SettingsOverlay::resized()
     scaleBox.setBounds(row.removeFromLeft(240));
     area.removeFromTop(space::xs);
     showDebugToggle.setBounds(area.removeFromTop(space::control).removeFromLeft(260));
+    consoleLogToggle.setBounds(area.removeFromTop(space::control).removeFromLeft(260));
 
     area.removeFromTop(space::xl + 6);
     row = area.removeFromTop(space::control);

@@ -9,6 +9,8 @@
 */
 
 #include "PluginProcessor.h"
+#include "DebugLog.h"
+#include "ui/UserSettings.h"
 #include "PluginEditor.h"
 #include "PatchBankData.h"
 #include "DrumPcmSampleLoader.h"
@@ -102,7 +104,7 @@ void _3HSPlugAudioProcessor::resetGM()
     monitorNotes = {};
     monitorKeysDown = {};
     monitorVelocity = {};
-    printf("[GM] GM reset\n");
+    S3_LOG("[GM] GM reset\n");
     // すべてのCCを0にリセット
     for (int ch = 0; ch <= 16; ++ch) {
         for (int cc = 0; cc < 128; ++cc) {
@@ -204,6 +206,7 @@ _3HSPlugAudioProcessor::_3HSPlugAudioProcessor()
         : parameters(*this, nullptr, "PARAMS", createParameterLayout())
     #endif
     {
+        ui::applyConsoleLogSetting(); // コンソール出力は設定で有効にした場合のみ(既定OFF)
         masterVolumeParam = parameters.getRawParameterValue(masterVolumeParamId);
         pcmPath = getAssetDirectoryPath("3HSPLUG_PCM_PATH", pcmPath);
         patchJsonPath = getAssetDirectoryPath("3HSPLUG_PATCHES_PATH", patchJsonPath);
@@ -529,11 +532,10 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
 
         if (msg.isSysEx()) {
             const uint8* data = msg.getSysExData();
-            printf("[MIDI] SysEx: ");
-            for (int i = 0; i < msg.getSysExDataSize(); ++i) {
-                printf("%02X ", data[i]);
-            }
-            printf("\n");
+            juce::String hex;
+            for (int i = 0; i < msg.getSysExDataSize(); ++i)
+                hex << juce::String::formatted("%02X ", data[i]);
+            S3_LOG("[MIDI] SysEx: %s", hex.toRawUTF8());
         }
 
         // 3HSPlug SysEx Data Entry (SysEx: F0 7D 33 48 <addr> <datas> <checksum> F7)
@@ -554,7 +556,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
             int valueMSB = data[7];
             int valueLSB = data[8];
             int value = (valueMSB << 4) | valueLSB;
-            printf("[Patch Override] Bank %02X, Patch %02X, Addr %02X, Value %02X\n", bankNumber, patchNumber, relativeAddr, value);
+            S3_LOG("[Patch Override] Bank %02X, Patch %02X, Addr %02X, Value %02X\n", bankNumber, patchNumber, relativeAddr, value);
             // パッチオーバーライド処理
             if (patchNumber >= 0 && patchNumber < 128 && bankNumber >= 0 && bankNumber < 128) {
                 patchBanks.setPatchOverride(bankNumber, patchNumber, relativeAddr, value);
@@ -568,7 +570,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
         if (msg.isSysEx() && msg.getSysExDataSize() >= 22) {// loosened sysex check for GSドットマトリクスセット{
             const uint8* data = msg.getSysExData();
             if (data[0] == 0x41 && data[1] == 0x10 && data[3] == 0x12 && data[4] == 0x10 && data[5] == 0x01 && data[6] == 0x00) {
-                printf("[GS] Dot Matrix Set received\n");
+                S3_LOG("[GS] Dot Matrix Set received\n");
                 // ドットマトリクスの更新処理をここに実装
                 if (msg.getSysExDataSize() >= 7 + 64) {
                     std::copy(data + 7, data + 7 + 64, gsDotMatrixData.begin());
@@ -582,14 +584,13 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
             if (msg.isSysEx() && msg.getSysExDataSize() >= 11) {// loosened sysex check for GSテキストディスプレイセット
                 const uint8* data = msg.getSysExData();
                 if (data[0] == 0x41 && data[1] == 0x10 && data[3] == 0x12 && data[4] == 0x10 && data[5] == 0x00 && data[6] == 0x00) {
-                    printf("[GS] Text Display Set received: ");
                     std::string text;
                     for (int i = 7; i < msg.getSysExDataSize() - 1; ++i) { // 最後の1バイトはチェックサムなので除外
                         text += static_cast<char>(data[i]);
                     }
                     TextDisplayData = text;
                     gsTextUpdated.store(true);
-                    printf("%s\n", text.c_str());
+                    S3_LOG("[GS] Text Display Set received: %s", text.c_str());
                     // テキストディスプレイの更新処理をここに実装（必要に応じてクラスメンバに保存するなどしても良い）
                     this->lastGSTextUpdateTick = this->getCurrentTick(); // テキストディスプレイの更新時刻を記録
                 }
@@ -614,7 +615,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                 gmReset = true; // GSリセットもGMリセットとして扱う
                 gsDrumChannels.clear(); // GSドラムチャンネルをクリア
                 updateDrumChannelMask();
-                printf("[GS] GS Reset received, Drum channels cleared\n");
+                S3_LOG("[GS] GS Reset received, Drum channels cleared\n");
             }
         }
 
@@ -632,11 +633,11 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                 uint8_t midiCh = (part == 0x10 ? 10 : 
                     (part >= 0x1A && part <= 0x1F) ? (part - 0x10 + 1) : 
                     (part >= 0x11 && part <= 0x19) ? (part - 0x10) : 0);
-                printf("[GS] part %d (MIDI CH%d) Map %d\n", part, midiCh, mm);
+                S3_LOG("[GS] part %d (MIDI CH%d) Map %d\n", part, midiCh, mm);
                 if (mm >= 1) { // GSm 拡張 : 1-2だけではなく 3-15もドラムマップとして扱う
                     gsDrumChannels.insert(midiCh);
                     updateDrumChannelMask();
-                    printf("[GS] MIDI CH%d set to Drum (MAP%d)\n", midiCh, mm);
+                    S3_LOG("[GS] MIDI CH%d set to Drum (MAP%d)\n", midiCh, mm);
                 }
             }
         }
@@ -645,7 +646,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
         if (msg.isController() && (msg.getControllerNumber() == 120 || msg.getControllerNumber() == 123)) {
             // All Sound Off: 指定チャンネルの音のみを停止
             int targetChannel = msg.getChannel();
-            printf("[MIDI] All Sound Off at CH%d\n", targetChannel);
+            S3_LOG("[MIDI] All Sound Off at CH%d\n", targetChannel);
             CCUpdated = true; // 更新フラグを立てる
             // FM音源ボイス：該当チャンネルのみを音量0ダミーノートで上書き
             for (int flat = 0; flat < numChips * numVoices; ++flat) {
@@ -723,7 +724,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
     if (gmReset)
     {
         // GMリセット時も音量0ダミーノート方式で即座に停止
-        printf("[MIDI] GM Reset executed (dummy note method)\n");
+        S3_LOG("[MIDI] GM Reset executed (dummy note method)\n");
         CCUpdated = true;
         // FM音源ボイスを音量0ダミーノートで上書き
         for (int flat = 0; flat < numChips * numVoices; ++flat) {
@@ -798,7 +799,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                 if (!pcOverrideEnabled) {
                     int bankMSB = msg.getControllerValue();
                     currentBank[ch - 1] = bankMSB;
-                    printf("[GS] Bank Select MSB CH%d: %d (Bank: %d)\n", ch, bankMSB, currentBank[ch - 1]);
+                    S3_LOG("[GS] Bank Select MSB CH%d: %d (Bank: %d)\n", ch, bankMSB, currentBank[ch - 1]);
                 }
             }
             
@@ -806,7 +807,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
             /*if (msg.getControllerNumber() == 32) {
                 int bankLSB = msg.getControllerValue();
                 currentBank[ch - 1] = bankLSB;
-                printf("[GS] Bank Select LSB CH%d: %d (Bank: %d)\n", ch, bankLSB, currentBank[ch - 1]);
+                S3_LOG("[GS] Bank Select LSB CH%d: %d (Bank: %d)\n", ch, bankLSB, currentBank[ch - 1]);
             }*/
             
             // CC#64 (Sustain Pedal) 処理
@@ -815,7 +816,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                 bool oldSustainState = channelSustainPedal[ch - 1];
                 channelSustainPedal[ch - 1] = newSustainState;
                 
-                printf("[MIDI] Sustain Pedal CH%d: %s\n", ch, newSustainState ? "ON" : "OFF");
+                S3_LOG("[MIDI] Sustain Pedal CH%d: %s\n", ch, newSustainState ? "ON" : "OFF");
                 
                 // ペダルが離された場合、ホールド中のノートを停止
                 if (oldSustainState && !newSustainState) {
@@ -832,7 +833,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                                 s3hsSounds[chip].ram_poke(s3hsSounds[chip].ram, baseAddr + 0x1E, 0); // Gate OFF
                                 v.inUse = false;
                                 v.noteNumber = -1;
-                                printf("[GM] Released held note %d on CH%d\n", heldNote, ch);
+                                S3_LOG("[GM] Released held note %d on CH%d\n", heldNote, ch);
                                 break;
                             }
                         }
@@ -893,29 +894,29 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
             if (ch >= 1 && ch <= 16) {
                 if (msg.getControllerNumber() == 101) {
                     channelRpnMsb[ch-1] = msg.getControllerValue();
-                    printf("[MIDI] RPN MSB Set: %d (ch %d)\n", channelRpnMsb[ch-1], ch);
+                    S3_LOG("[MIDI] RPN MSB Set: %d (ch %d)\n", channelRpnMsb[ch-1], ch);
                 }
                 if (msg.getControllerNumber() == 100) {
                     channelRpnLsb[ch-1] = msg.getControllerValue();
-                    printf("[MIDI] RPN LSB Set: %d (ch %d)\n", channelRpnLsb[ch-1], ch);
+                    S3_LOG("[MIDI] RPN LSB Set: %d (ch %d)\n", channelRpnLsb[ch-1], ch);
                 }
                 if (msg.getControllerNumber() == 99) {
                     channelNrpnMsb[ch-1] = msg.getControllerValue();
-                    printf("[MIDI] NRPN MSB Set: %d (ch %d)\n", channelNrpnMsb[ch-1], ch);
+                    S3_LOG("[MIDI] NRPN MSB Set: %d (ch %d)\n", channelNrpnMsb[ch-1], ch);
                 }
                 if (msg.getControllerNumber() == 98) {
                     channelNrpnLsb[ch-1] = msg.getControllerValue();
-                    printf("[MIDI] NRPN LSB Set: %d (ch %d)\n", channelNrpnLsb[ch-1], ch);
+                    S3_LOG("[MIDI] NRPN LSB Set: %d (ch %d)\n", channelNrpnLsb[ch-1], ch);
                 }
                 // Data Entry MSB (CC#6) 受信時、RPN/NRPN値ごとに処理
                 if (msg.getControllerNumber() == 6) {
-                    printf("[MIDI] NRPN: Parameter %d: %d (ch %d)\n", channelNrpnMsb[ch-1] * 128 + channelNrpnLsb[ch-1], msg.getControllerValue(), ch);
+                    S3_LOG("[MIDI] NRPN: Parameter %d: %d (ch %d)\n", channelNrpnMsb[ch-1] * 128 + channelNrpnLsb[ch-1], msg.getControllerValue(), ch);
                     if (channelRpnMsb[ch-1] == 0 && channelRpnLsb[ch-1] == 0) {
                         channelPitchBendRange[ch-1] = msg.getControllerValue();
                         if (gsDrumChannels.find(ch) != gsDrumChannels.end() || ch == 10) {
-                            printf("[DrumPCM] Pitch Bend Range Set: %d (drum ch %d)\n", channelPitchBendRange[ch-1], ch);
+                            S3_LOG("[DrumPCM] Pitch Bend Range Set: %d (drum ch %d)\n", channelPitchBendRange[ch-1], ch);
                         } else {
-                            printf("[GM] Pitch Bend Range Set: %d (ch %d)\n", channelPitchBendRange[ch-1], ch);
+                            S3_LOG("[GM] Pitch Bend Range Set: %d (ch %d)\n", channelPitchBendRange[ch-1], ch);
                         }
                         channelRpnMsb[ch-1] = 127;
                         channelRpnLsb[ch-1] = 127;
@@ -925,7 +926,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                         // value: 0..127, center=64
                         int cents = ((value - 64) * 100) / 64; // -100～+100
                         channelFineTune[ch-1] = cents;
-                        printf("[GM] Fine Tune Set: %d cents (ch %d)\n", channelFineTune[ch-1], ch);
+                        S3_LOG("[GM] Fine Tune Set: %d cents (ch %d)\n", channelFineTune[ch-1], ch);
                         channelRpnMsb[ch-1] = 127;
                         channelRpnLsb[ch-1] = 127;
                     } else if (channelRpnMsb[ch-1] == 0 && channelRpnLsb[ch-1] == 2) {
@@ -934,45 +935,45 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                         // value: 0..127, center=64
                         int cents = (value - 64) * 100; // -6400～+6300
                         channelCoarseTune[ch-1] = cents;
-                        printf("[GM] Coarse Tune Set: %d cents (ch %d)\n", channelCoarseTune[ch-1], ch);
+                        S3_LOG("[GM] Coarse Tune Set: %d cents (ch %d)\n", channelCoarseTune[ch-1], ch);
                         channelRpnMsb[ch-1] = 127;
                         channelRpnLsb[ch-1] = 127;
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 8) {
                         // ビブラートレート (Vibrato Rate)
                         channelCC[ch][76] = msg.getControllerValue();
-                        printf("[GS/XG] Vibrato Rate (NRPN) Set: %d (ch %d)\n", channelCC[ch][76], ch);
+                        S3_LOG("[GS/XG] Vibrato Rate (NRPN) Set: %d (ch %d)\n", channelCC[ch][76], ch);
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 9) {
                         // ビブラートデプス (Vibrato Depth)
                         channelCC[ch][77] = msg.getControllerValue();
-                        printf("[GS/XG] Vibrato Depth (NRPN) Set: %d (ch %d)\n", channelCC[ch][77], ch);
+                        S3_LOG("[GS/XG] Vibrato Depth (NRPN) Set: %d (ch %d)\n", channelCC[ch][77], ch);
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 10) {
                         // ビブラートディレイ (Vibrato Delay)
                         channelCC[ch][78] = msg.getControllerValue();
-                        printf("[GS/XG] Vibrato Delay (NRPN) Set: %d (ch %d)\n", channelCC[ch][78], ch);
+                        S3_LOG("[GS/XG] Vibrato Delay (NRPN) Set: %d (ch %d)\n", channelCC[ch][78], ch);
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 99) {
                         // エンベロープアタックタイム (Envelope Attack Time)
                         channelCC[ch][73] = msg.getControllerValue();
-                        printf("[GS/XG] Envelope Attack Time (NRPN) Set: %d (ch %d)\n", channelCC[ch][73], ch);
+                        S3_LOG("[GS/XG] Envelope Attack Time (NRPN) Set: %d (ch %d)\n", channelCC[ch][73], ch);
                         patchAltered = true; // パッチが変更されたフラグを立てる
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 100) {
                         // エンベロープディケイタイム (Envelope Decay Time)
                         channelCC[ch][75] = msg.getControllerValue();
-                        printf("[GS/XG] Envelope Decay Time (NRPN) Set: %d (ch %d)\n", channelCC[ch][75], ch);
+                        S3_LOG("[GS/XG] Envelope Decay Time (NRPN) Set: %d (ch %d)\n", channelCC[ch][75], ch);
                         patchAltered = true; // パッチが変更されたフラグを立てる
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 102) {
                         // エンベロープリリースタイム (Envelope Release Time)
                         channelCC[ch][72] = msg.getControllerValue();
-                        printf("[GS/XG] Envelope Release Time (NRPN) Set: %d (ch %d)\n", channelCC[ch][72], ch);
+                        S3_LOG("[GS/XG] Envelope Release Time (NRPN) Set: %d (ch %d)\n", channelCC[ch][72], ch);
                         patchAltered = true; // パッチが変更されたフラグを立てる
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 32) {
                         // LPFカットオフ (LPF Cutoff)
                         channelCC[ch][74] = msg.getControllerValue();
-                        printf("[GS/XG] LPF Cutoff (NRPN) Set: %d (ch %d)\n", channelCC[ch][74], ch);
+                        S3_LOG("[GS/XG] LPF Cutoff (NRPN) Set: %d (ch %d)\n", channelCC[ch][74], ch);
                         patchAltered = true; // パッチが変更されたフラグを立てる
                     } else if (channelNrpnMsb[ch-1] == 1 && channelNrpnLsb[ch-1] == 33) {
                         // LPFレゾナンス (LPF Resonance)
                         channelCC[ch][71] = msg.getControllerValue();
-                        printf("[GS/XG] LPF Resonance (NRPN) Set: %d (ch %d)\n", channelCC[ch][71], ch);
+                        S3_LOG("[GS/XG] LPF Resonance (NRPN) Set: %d (ch %d)\n", channelCC[ch][71], ch);
                         patchAltered = true; // パッチが変更されたフラグを立てる
                     }                
                 }
@@ -1075,12 +1076,12 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                     if (ch >= 0 && ch < 16) {
                         currentProgram[ch] = prog;
                         int bank = currentBank[ch];
-                        printf("[MIDI] Program Change: Bank %d, Program %d, CH %d\n", bank, prog, msg.getChannel());
+                        S3_LOG("[MIDI] Program Change: Bank %d, Program %d, CH %d\n", bank, prog, msg.getChannel());
                         
                         // 代理発音の確認
                         auto& effectivePatch = patchBanks.getEffectivePatch(bank, prog);
                         if (bank != 0 && !patchBanks.banks[bank][prog].defined && patchBanks.banks[0][prog].defined) {
-                            printf("[PatchBank] Using fallback from Bank 0 for Bank %d Program %d\n", bank, prog);
+                            S3_LOG("[PatchBank] Using fallback from Bank 0 for Bank %d Program %d\n", bank, prog);
                         }
                     }
                 }
@@ -1101,7 +1102,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                     uint32_t pcmAddr_Start = info.pcmIndex;
                     uint32_t pcmAddr_End = pcmAddr_Start + info.pcmLength;
                     if (pcmAddr_End > DrumKit::kPcmMemorySize) {
-                        printf("[Warning::DrumPCM] Drum PCM Sample out of bounds: %d-%d (size: %u)\n", pcmAddr_Start, pcmAddr_End, DrumKit::kPcmMemorySize);
+                        S3_LOG("[Warning::DrumPCM] Drum PCM Sample out of bounds: %d-%d (size: %u)\n", pcmAddr_Start, pcmAddr_End, DrumKit::kPcmMemorySize);
                     }
                     // 既存の同じMIDIチャンネル&ノート番号のドラムボイスを検索
                     int globalPcmChannel = -1;
@@ -1139,13 +1140,13 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                         
                         // さらに安全策
                         if (chip >= numChips) {
-                            printf("[Error] Chip index out of bounds: %d >= %d. Resetting to 0.\n", chip, numChips);
+                            S3_LOG("[Error] Chip index out of bounds: %d >= %d. Resetting to 0.\n", chip, numChips);
                             chip = 0;
                             pcmChannel = 0;
                             globalPcmChannel = 0;
                         }
 
-                        printf("[DrumPCM] Assigning new voice: MIDI ch %d, note %d, globalChannel %d\n", ch, note, globalPcmChannel);
+                        S3_LOG("[DrumPCM] Assigning new voice: MIDI ch %d, note %d, globalChannel %d\n", ch, note, globalPcmChannel);
                     }
 
                     // PCM RAMアドレスをS3HS音源に設定（例: regwtやram_pokeでpcm_addr[pcmChannel]等を設定）
@@ -1201,7 +1202,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                     //printf("Drum Note on: note %d, chip %d, pcmChannel %d, globalChannel %d, pcmAddr %d-%d\n",
                     //       note, chip, pcmChannel, globalPcmChannel, pcmAddr_Start, pcmAddr_End);
                 } else {// PCMファイルが無い場合は何も鳴らさない
-                    printf("[Warning::DrumPCM] Drum PCM Sample not found for note %d on channel %d\n", note, ch);
+                    S3_LOG("[Warning::DrumPCM] Drum PCM Sample not found for note %d on channel %d\n", note, ch);
                 }
             } else {
             // それ以外はFM音源等の従来処理
@@ -1268,7 +1269,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                             if (foundFree >= 0)
                                 voiceIndex = foundFree;
                             else
-                                printf("[Warning::Voice] No free slots found during rolling allocation, reusing slot %d\n", currentRollingIndex);
+                                S3_LOG("[Warning::Voice] No free slots found during rolling allocation, reusing slot %d\n", currentRollingIndex);
                         }
                         currentRollingIndex = (currentRollingIndex + 1) % totalVoices;
                     }
@@ -1288,7 +1289,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                     }
                     if (voiceIndex < 0) {
                         voiceIndex = findOldest();
-                        printf("[Warning::Voice] No free voice slots, reusing oldest slot %d\n", voiceIndex);
+                        S3_LOG("[Warning::Voice] No free voice slots, reusing oldest slot %d\n", voiceIndex);
                     }
                 }
                 // tickカウンタを進める
@@ -1392,7 +1393,7 @@ void _3HSPlugAudioProcessor::processBlockSegment (juce::AudioBuffer<float>& buff
                 auto& heldList = heldNotes[ch - 1];
                 if (std::find(heldList.begin(), heldList.end(), adjustedNote) == heldList.end()) {
                     heldList.push_back(adjustedNote);
-                    printf("[GM] Note %d held on CH%d (Sustain Pedal active)\n", adjustedNote, ch);
+                    S3_LOG("[GM] Note %d held on CH%d (Sustain Pedal active)\n", adjustedNote, ch);
                 }
                 // ノートは停止せずに継続
             } else {
@@ -2364,7 +2365,7 @@ void _3HSPlugAudioProcessor::allNotesOff()
     monitorNotes = {};
     monitorKeysDown = {};
     monitorVelocity = {};
-    printf("[Panic] All Notes Off\n");
+    S3_LOG("[Panic] All Notes Off\n");
     
     // 全ボイスを停止
     for (int flat = 0; flat < numChips * numVoices; ++flat) {
@@ -2425,7 +2426,7 @@ void _3HSPlugAudioProcessor::setPcOverrideEnabled(bool enabled)
                 currentBank[ch] = pcOverrideBank;
                 currentProgram[ch] = pcOverrideProgram;
             }
-            printf("[PC Override] Enabled: Bank %d, Program %d\n", pcOverrideBank, pcOverrideProgram);
+            S3_LOG("[PC Override] Enabled: Bank %d, Program %d\n", pcOverrideBank, pcOverrideProgram);
         }
     }
 }
@@ -2443,7 +2444,7 @@ void _3HSPlugAudioProcessor::setPcOverrideBank(int bank)
             for (int ch = 0; ch < 16; ++ch) {
                 currentBank[ch] = pcOverrideBank;
             }
-            printf("[PC Override] Bank changed to %d\n", pcOverrideBank);
+            S3_LOG("[PC Override] Bank changed to %d\n", pcOverrideBank);
         }
     }
 }
@@ -2461,7 +2462,7 @@ void _3HSPlugAudioProcessor::setPcOverrideProgram(int program)
             for (int ch = 0; ch < 16; ++ch) {
                 currentProgram[ch] = pcOverrideProgram;
             }
-            printf("[PC Override] Program changed to %d\n", pcOverrideProgram);
+            S3_LOG("[PC Override] Program changed to %d\n", pcOverrideProgram);
         }
     }
 }
@@ -2519,7 +2520,7 @@ void _3HSPlugAudioProcessor::setNumChips(int n)
         allNotesOff();
         currentRollingIndex = 0; // ローリング割り当て用インデックスをリセット
         
-        printf("[System] NumChips changed to %d\n", numChips);
+        S3_LOG("[System] NumChips changed to %d\n", numChips);
     }
 }
 

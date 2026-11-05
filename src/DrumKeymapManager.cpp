@@ -1,3 +1,4 @@
+#include "DebugLog.h"
 // DrumKeymapManager.cpp
 #include "DrumKeymapManager.h"
     
@@ -18,11 +19,11 @@ void DrumKeymapManager::triggerDrumSample(uint8_t midiChannel, uint8_t noteNumbe
     DrumSampleInfo info = getSampleInfo(midiChannel, noteNumber);
     if (info.pcmIndex >= 0) {
         // 実際のPCM再生処理をここに記述（例: DrumPcmSampleLoader等を呼び出し）
-        printf("[DrumKeymapManager] CH%d Note%d → PCM idx=0x%X rate=%d len=%d vel=%d\n",
+        S3_LOG("[DrumKeymapManager] CH%d Note%d → PCM idx=0x%X rate=%d len=%d vel=%d\n",
             midiChannel, noteNumber, info.pcmIndex, info.sampleRate, info.pcmLength, velocity);
         // TODO: DrumPcmSampleLoader等の再生関数呼び出し
     } else {
-        printf("[DrumKeymapManager] CH%d Note%d 未割当\n", midiChannel, noteNumber);
+        S3_LOG("[DrumKeymapManager] CH%d Note%d 未割当\n", midiChannel, noteNumber);
     }
 }
 

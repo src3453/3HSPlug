@@ -1,6 +1,7 @@
 
 
 #include "PatchBankData.h"
+#include "DebugLog.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -35,7 +36,7 @@ void PatchBankSet::initDefaultPatch() {
 }
 
 void PatchBankSet::initialize(const std::string& patchesDir) {
-    printf("[PatchBankData] Initializing patch banks from directory: %s\n", patchesDir.c_str());
+    S3_LOG("[PatchBankData] Initializing patch banks from directory: %s\n", patchesDir.c_str());
 
     // パッチ番号は実際のMIDIプログラム番号から1を引いた値, 1-128 -> 0-127
 
@@ -67,9 +68,9 @@ void PatchBankSet::initialize(const std::string& patchesDir) {
 void PatchBankSet::exportCurrentToJSON() const {
     const std::string outputPath = "current_patch_bank.json";
     if (saveBankToJSON(outputPath, 0)) {
-        std::cout << "[PatchLoaderJSON] Current PatchBank exported to " << outputPath << std::endl;
+        S3_LOG("[PatchLoaderJSON] Current PatchBank exported to %s", juce::String(outputPath).toRawUTF8());
     } else {
-        std::cout << "[PatchLoaderJSON] Failed to export current PatchBank to " << outputPath << std::endl;
+        S3_WARN("[PatchLoaderJSON] Failed to export current PatchBank to %s", juce::String(outputPath).toRawUTF8());
     }
 }
 
@@ -325,20 +326,20 @@ bool PatchBankSet::loadFromJSON(const std::string& filePath, int bankNumber) {
         
         juce::File file(filePath);
         if (!file.exists()) {
-            std::cout << "[PatchLoaderJSON] JSON file not found, skipping: " << filePath << std::endl;
+            S3_LOG("[PatchLoaderJSON] JSON file not found, skipping: %s", juce::String(filePath).toRawUTF8());
             return false;
         }
         juce::String jsonContent = file.loadFileAsString();
         juce::var jsonData = juce::JSON::parse(jsonContent);
         
         if (!jsonData.isObject()) {
-            std::cout << "[PatchLoaderJSON] Error: Invalid JSON format" << std::endl;
+            S3_ERR("[PatchLoaderJSON] Error: Invalid JSON format");
             return false;
         }
         
         juce::var patches = jsonData.getProperty("patches", juce::var());
         if (!patches.isArray()) {
-            std::cout << "[PatchLoaderJSON] Error: JSON file does not contain 'patches' array" << std::endl;
+            S3_ERR("[PatchLoaderJSON] Error: JSON file does not contain 'patches' array");
             return false;
         }
         
@@ -348,7 +349,7 @@ bool PatchBankSet::loadFromJSON(const std::string& filePath, int bankNumber) {
                 patch.defined = false;
             }
         } else {
-            printf("[PatchLoaderJSON] Warning: Invalid bank number %d\n", bankNumber);
+            S3_WARN("[PatchLoaderJSON] Warning: Invalid bank number %d\n", bankNumber);
             return false;
         }
         
@@ -363,7 +364,7 @@ bool PatchBankSet::loadFromJSON(const std::string& filePath, int bankNumber) {
             
             int programNumber = static_cast<int>(patchData.getProperty("program", 0));
             if (programNumber < 0 || programNumber >= PATCH_BANK_SIZE) {
-                std::cout << "[PatchLoaderJSON] Warning: Invalid program number " << programNumber << std::endl;
+                S3_WARN("[PatchLoaderJSON] Warning: Invalid program number %d", programNumber);
                 continue;
             }
             
@@ -392,16 +393,16 @@ bool PatchBankSet::loadFromJSON(const std::string& filePath, int bankNumber) {
                         patch.operators[j].waveform = static_cast<uint8_t>(static_cast<int>(opData.getProperty("waveform", 0)));
                     }
                 }
-                printf("[PatchLoaderJSON] Loaded patch %d (has %d operator(s)).\n", programNumber, operatorArray->size());
+                S3_LOG("[PatchLoaderJSON] Loaded patch %d (has %d operator(s)).\n", programNumber, operatorArray->size());
             }
             
         }
         
-        printf("[PatchLoaderJSON] Successfully loaded %d patches into bank %d from %s\n", patchArray->size(), bankNumber, filePath.c_str());
+        S3_LOG("[PatchLoaderJSON] Successfully loaded %d patches into bank %d from %s\n", patchArray->size(), bankNumber, filePath.c_str());
         return true;
         
     } catch (const std::exception& e) {
-        std::cout << "[PatchLoaderJSON] Error loading patch bank from JSON: " << e.what() << std::endl;
+        S3_ERR("[PatchLoaderJSON] Error loading patch bank from JSON: %s", juce::String(e.what()).toRawUTF8());
         return false;
     }
 }
@@ -464,11 +465,11 @@ bool PatchBankSet::saveBankToJSON(const std::string& filePath, const Bank& bank)
         fout.close();
         if (!fout) return false;
         
-        std::cout << "[PatchLoaderJSON] Successfully saved bank to " << filePath << std::endl;
+        S3_LOG("[PatchLoaderJSON] Successfully saved bank to %s", juce::String(filePath).toRawUTF8());
         return true;
         
     } catch (const std::exception& e) {
-        std::cout << "[PatchLoaderJSON] Error saving patch bank: " << e.what() << std::endl;
+        S3_ERR("[PatchLoaderJSON] Error saving patch bank: %s", juce::String(e.what()).toRawUTF8());
         return false;
     }
 }
