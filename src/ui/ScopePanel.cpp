@@ -183,7 +183,7 @@ void ScopePanel::resized()
 {
     auto area = getLocalBounds().reduced(space::sm);
     auto bar = area.removeFromTop(headerHeight - space::sm);
-    auto right = bar.removeFromRight(760);
+    auto right = bar.removeFromRight(720);
     auto place = [&right](juce::Label& l, juce::ComboBox& b, int boxW) {
         b.setBounds(right.removeFromRight(boxW).reduced(0, 2));
         l.setBounds(right.removeFromRight(juce::jmax(40, l.getFont().getStringWidth(l.getText()) + 8)));
@@ -192,12 +192,10 @@ void ScopePanel::resized()
     place(dcLabel, dcBox, 80);
     place(fpsLabel, fpsBox, 70);
     place(gainLabel, gainBox, 90);
+    place(viewLabel, viewBox, 130);
     prevButton.setBounds(bar.removeFromLeft(36).reduced(0, 2));
-    pageLabel.setBounds(bar.removeFromLeft(210));
+    pageLabel.setBounds(bar.removeFromLeft(190));
     nextButton.setBounds(bar.removeFromLeft(36).reduced(0, 2));
-    // 表示切替はページ送りの右隣（左側の空き）に置く
-    viewLabel.setBounds(bar.removeFromLeft(48));
-    viewBox.setBounds(bar.removeFromLeft(130).reduced(0, 2));
     for (auto* b : { &prevButton, &nextButton }) b->setVisible(!midiMode());
 }
 
