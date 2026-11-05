@@ -170,7 +170,7 @@ ScopePanel::ScopePanel(_3HSPlugAudioProcessor& p) : processor(p)
     dcBox.setSelectedId(static_cast<int>(dcMode) + 1, juce::dontSendNotification);
     dcBox.onChange = [this] {
         dcMode = static_cast<DcMode>(juce::jlimit(1, 3, dcBox.getSelectedId()) - 1);
-        for (auto& c : cells) { c.valid = false; c.dcFilter.reset(); } // 次の取得で作り直す
+        for (auto& c : cells) { c.valid = false; c.dcFilter.reset(); c.dcSmoothedValid = false; } // 次の取得で作り直す
         ui::userSettings().setValue(kDcKey, static_cast<int>(dcMode));
         ui::userSettings().saveIfNeeded();
     };
@@ -326,7 +326,10 @@ void ScopePanel::timerCallback()
             double sum = 0.0;
             for (int s = 0; s < capture; ++s) sum += c.raw[static_cast<size_t>(s)];
             const float mean = static_cast<float>(sum / capture);
-            for (int s = 0; s < capture; ++s) c.raw[static_cast<size_t>(s)] -= mean;
+            // 補正値（平均）をフレーム間で指数移動平均し、縦方向の揺れを抑える
+            c.dcSmoothed = c.dcSmoothedValid ? c.dcSmoothed + dcSmoothing * (mean - c.dcSmoothed) : mean;
+            c.dcSmoothedValid = true;
+            for (int s = 0; s < capture; ++s) c.raw[static_cast<size_t>(s)] -= c.dcSmoothed;
         } else if (dcMode == DcMode::highPass) { // 出力段と同じハイパス（トリガー判定にも効く）
             // 取得窓は連続ストリームではないので、毎回先頭サンプルの定常状態で状態を作り直す
             // （DC入力に対する出力は0）。先頭の過渡応答が表示に出ないようにする。
