@@ -53,7 +53,8 @@ private:
     enum class ColourMode { white = 1, voice, midiChannel };
     ColourMode colourMode = ColourMode::white;
     std::array<juce::Colour, maxCells> cellColours;
-    bool removeDc = false;
+    enum class DcMode { off = 0, mean = 1, highPass = 2 }; // 設定値と対応（旧: 0=なし,1=平均値）
+    DcMode dcMode = DcMode::off;
 
     int page = 0;
     bool wasShowing = false;
@@ -65,6 +66,7 @@ private:
         std::vector<float> shown = std::vector<float>(captureSamples / 2, 0.0f);
         int shownCount = 0;
         bool valid = false;
+        juce::IIRFilter dcFilter; // High-pass用（チャンネルごと）
         float autoPeak = 0.05f;
     };
     std::array<Cell, maxCells> cells;
