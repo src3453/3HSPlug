@@ -420,6 +420,20 @@ PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p), dr
     };
     setupProgramEdit(bankEdit, "Bank (0-127).");
     setupProgramEdit(patchEdit, "Patch (1-128).");
+    for (auto* cap : { &bankCaption, &patchCaption }) {
+        setLabelFont(*cap, type::small, true);
+        cap->setColour(juce::Label::textColourId, colours::textDim);
+        cap->setJustificationType(juce::Justification::centred);
+        cap->setInterceptsMouseClicks(false, false);
+        addAndMakeVisible(*cap);
+    }
+    bankCaption.setText("BANK", juce::dontSendNotification);
+    patchCaption.setText("PATCH", juce::dontSendNotification);
+    setLabelFont(colonLabel, type::title, true);
+    colonLabel.setText(":", juce::dontSendNotification);
+    colonLabel.setJustificationType(juce::Justification::centred);
+    colonLabel.setInterceptsMouseClicks(false, false);
+    addAndMakeVisible(colonLabel);
     setLabelFont(programLabel, type::title, true);
     addAndMakeVisible(programLabel);
     setLabelFont(statusLabel, type::small);
@@ -612,12 +626,17 @@ void PatchEditorPanel::resized()
     // 左: チャンネルと名前 / 状態 / Revert・Save、中: アルゴリズムとフィードバック、右: 経路図
     auto global = globalArea();
     auto left = global.removeFromLeft(juce::jlimit(240, 320, global.getWidth() * 3 / 10));
+    auto caption = left.removeFromTop(kCaptionHeight);
     auto top = left.removeFromTop(space::control);
     channelBox.setBounds(top.removeFromLeft(84));
     top.removeFromLeft(space::md);
+    caption.removeFromLeft(84 + space::md);
     bankEdit.setBounds(top.removeFromLeft(56));
-    top.removeFromLeft(space::sm);
+    bankCaption.setBounds(caption.removeFromLeft(56));
+    colonLabel.setBounds(top.removeFromLeft(space::md + space::sm));
+    caption.removeFromLeft(space::md + space::sm);
     patchEdit.setBounds(top.removeFromLeft(56));
+    patchCaption.setBounds(caption.removeFromLeft(56));
     left.removeFromTop(space::xs);
     programLabel.setBounds(left.removeFromTop(20));
     auto buttons = left.removeFromBottom(space::control);
