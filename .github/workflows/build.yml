@@ -19,8 +19,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # lib/ is gitignored and the repo holds no JUCE gitlink, so the submodule
-  # checkout below is a no-op today. This pinned tag fills lib/JUCE instead.
+  # lib/JUCE is a submodule pinned to this tag; the fetch step below is only a
+  # fallback if the submodule checkout leaves lib/JUCE empty.
   JUCE_VERSION: "8.0.8"
   BUILD_CONFIG: Release
 

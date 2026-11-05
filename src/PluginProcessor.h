@@ -238,6 +238,8 @@ public:
     void resetDrumKit();
     juce::Result loadDrumKitFile(const juce::File& file);
     juce::Result saveDrumKitFile(const juce::File& file) const;
+    // UIからバンクセレクト(CC0)+プログラムチェンジを次のブロックで発行する（programは0～127）
+    void sendProgramChange(int midiChannel, int bank, int program);
     void auditionDrum(int note, int velocity = 110); // 次のブロックでCH10のノートオンを鳴らす
     uint32_t getDrumKitRevision() const noexcept { return drumKitRevision.load(); }
 
