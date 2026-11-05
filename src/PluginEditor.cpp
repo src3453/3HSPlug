@@ -8,6 +8,7 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor(_3HSPlugAudioProcesso
       audioProcessor(p),
       channelStatus(p),
       scope(p),
+      debugPanel(p),
       channelActivity(p),
       patchEditor(p),
       voiceStatus(p),
@@ -21,6 +22,7 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor(_3HSPlugAudioProcesso
 
     titleBar.onPanic = [this] { audioProcessor.allNotesOff(); };
     titleBar.onSettings = [this] { settings.open(); focusRing.toFront(false); };
+    settings.onShowDebugTabChanged = [this](bool show) { setDebugTabVisible(show); };
     channelActivity.onChannelSelected = [this](int ch) { selectChannel(ch); };
     patchEditor.onChannelChanged = [this](int ch) {
         channelActivity.setSelectedChannel(ch);
@@ -43,6 +45,8 @@ _3HSPlugAudioProcessorEditor::_3HSPlugAudioProcessorEditor(_3HSPlugAudioProcesso
     tabs.addTab("Synth", ui::colours::panel, &synthPage, false);
     tabs.addTab("Channels", ui::colours::panel, &channelStatus, false);
     tabs.addTab("Scope", ui::colours::panel, &scope, false);
+    if (ui::showDebugTab())
+        tabs.addTab("Debug", ui::colours::panel, &debugPanel, false);
     content.addAndMakeVisible(tabs);
     content.addAndMakeVisible(master);
     content.addChildComponent(settings);
@@ -61,6 +65,20 @@ _3HSPlugAudioProcessorEditor::~_3HSPlugAudioProcessorEditor()
     stopTimer();
     ui::appearanceChanged().removeChangeListener(this);
     setLookAndFeel(nullptr);
+}
+
+void _3HSPlugAudioProcessorEditor::setDebugTabVisible(bool visible)
+{
+    int index = -1;
+    for (int i = 0; i < tabs.getNumTabs(); ++i)
+        if (tabs.getTabNames()[i] == "Debug") index = i;
+    if (visible && index < 0) {
+        tabs.addTab("Debug", ui::colours::panel, &debugPanel, false);
+        ui::refreshFonts(debugPanel);
+        resized();
+    } else if (!visible && index >= 0) {
+        tabs.removeTab(index);
+    }
 }
 
 void _3HSPlugAudioProcessorEditor::selectChannel(int midiChannel)
@@ -106,6 +124,7 @@ void _3HSPlugAudioProcessorEditor::changeListenerCallback(juce::ChangeBroadcaste
         ui::refreshFonts(synthPage);
     if (tabs.getCurrentTabIndex() != 2)
         ui::refreshFonts(scope);
+    ui::refreshFonts(debugPanel);
     ui::refreshTheme(*this);
     for (int i = 0; i < tabs.getNumTabs(); ++i)
         tabs.setTabBackgroundColour(i, ui::colours::panel);
@@ -134,6 +153,7 @@ void _3HSPlugAudioProcessorEditor::timerCallback()
     master.update();
     patchEditor.refresh();
     if (channelStatus.isShowing()) channelStatus.update();
+    if (debugPanel.isShowing()) debugPanel.update();
     settings.update();
     focusRing.refresh();
 }

@@ -7,6 +7,7 @@
 #include "ui/PatchEditorPanel.h"
 #include "ui/ChannelStatusPanel.h"
 #include "ui/ScopePanel.h"
+#include "ui/DebugPanel.h"
 
 //==============================================================================
 // 区画:
@@ -30,6 +31,7 @@ private:
     void changeListenerCallback(juce::ChangeBroadcaster*) override; // テーマやフォントが変わった
     void selectChannel(int midiChannel);
     void applyUIScale(float scale);
+    void setDebugTabVisible(bool visible);
 
     _3HSPlugAudioProcessor& audioProcessor;
     ui::LookAndFeel lookAndFeel;
@@ -40,6 +42,7 @@ private:
     juce::Component synthPage;
     ui::ChannelStatusPanel channelStatus;
     ui::ScopePanel scope;
+    ui::DebugPanel debugPanel;
     juce::TabbedComponent tabs { juce::TabbedButtonBar::TabsAtTop };
     ui::ChannelActivityPanel channelActivity;
     ui::PatchEditorPanel patchEditor;

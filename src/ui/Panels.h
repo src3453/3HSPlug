@@ -107,6 +107,7 @@ public:
     void open();
     void close();
     void update(); // 表示中に情報を更新する
+    std::function<void(bool)> onShowDebugTabChanged;
 
 private:
     juce::Rectangle<int> panelBounds() const;
@@ -128,6 +129,7 @@ private:
     juce::ComboBox scaleBox;
     juce::Label themeLabel;
     juce::ComboBox themeBox;
+    juce::ToggleButton showDebugToggle { "Show Debug tab" };
     juce::TextButton themesFolderButton { "Themes folder..." };
     juce::StringArray themeNames, themeErrors;
     void reloadThemeList();

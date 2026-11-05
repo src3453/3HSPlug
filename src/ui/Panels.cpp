@@ -528,6 +528,14 @@ SettingsOverlay::SettingsOverlay(_3HSPlugAudioProcessor& p) : processor(p)
     scaleBox.onChange = [this] { setUIScalePercent(scaleBox.getSelectedId()); };
     addAndMakeVisible(scaleBox);
 
+    showDebugToggle.setToggleState(showDebugTab(), juce::dontSendNotification);
+    showDebugToggle.setTooltip("Adds a Debug tab with the chip register view");
+    showDebugToggle.onClick = [this] {
+        setShowDebugTab(showDebugToggle.getToggleState());
+        if (onShowDebugTabChanged) onShowDebugTabChanged(showDebugToggle.getToggleState());
+    };
+    addAndMakeVisible(showDebugToggle);
+
     themeLabel.setText("Theme", juce::dontSendNotification);
     setLabelFont(themeLabel, type::body);
     addAndMakeVisible(themeLabel);
@@ -654,6 +662,7 @@ void SettingsOverlay::open()
     allocationBox.setSelectedId(processor.getAllocationStrategy() + 1, juce::dontSendNotification);
     fontBox.setSelectedId(static_cast<int>(currentFontChoice()) + 1, juce::dontSendNotification);
     scaleBox.setSelectedId(currentUIScalePercent(), juce::dontSendNotification);
+    showDebugToggle.setToggleState(showDebugTab(), juce::dontSendNotification);
     pcOverrideToggle.setToggleState(processor.isPcOverrideEnabled(), juce::dontSendNotification);
     pcBankSlider.setValue(processor.getPcOverrideBank(), juce::dontSendNotification);
     pcProgramSlider.setValue(processor.getPcOverrideProgram(), juce::dontSendNotification);
@@ -693,7 +702,7 @@ void SettingsOverlay::update()
 
 juce::Rectangle<int> SettingsOverlay::panelBounds() const
 {
-    return getLocalBounds().withSizeKeepingCentre(juce::jmin(560, getWidth() - 40), juce::jmin(700, getHeight() - 40));
+    return getLocalBounds().withSizeKeepingCentre(juce::jmin(560, getWidth() - 40), juce::jmin(740, getHeight() - 40));
 }
 
 void SettingsOverlay::paint(juce::Graphics& g)
@@ -770,6 +779,8 @@ void SettingsOverlay::resized()
     row = area.removeFromTop(space::control);
     scaleLabel.setBounds(row.removeFromLeft(140));
     scaleBox.setBounds(row.removeFromLeft(240));
+    area.removeFromTop(space::xs);
+    showDebugToggle.setBounds(area.removeFromTop(space::control).removeFromLeft(260));
 
     area.removeFromTop(space::xl + 6);
     row = area.removeFromTop(space::control);

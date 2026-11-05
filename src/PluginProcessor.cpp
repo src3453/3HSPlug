@@ -1707,6 +1707,20 @@ bool _3HSPlugAudioProcessor::readScopeWindow(int flat, float* dest, int count) c
     return true;
 }
 
+bool _3HSPlugAudioProcessor::getChipRegisters(int chip, std::array<uint8_t, chipRegisterBytes>& out) const
+{
+    if (chip < 0 || chip >= numChips || chip >= static_cast<int>(voiceMutexes.size()))
+        return false;
+    std::lock_guard<std::mutex> lock(*voiceMutexes[chip]);
+    const auto& ram = s3hsSounds[chip].ram;
+    constexpr size_t base = 0x400000;
+    if (ram.size() < base + chipRegisterBytes)
+        return false;
+    for (int i = 0; i < chipRegisterBytes; ++i)
+        out[static_cast<size_t>(i)] = static_cast<uint8_t>(ram[base + static_cast<size_t>(i)]);
+    return true;
+}
+
 std::vector<std::vector<float>> _3HSPlugAudioProcessor::getChipAudioDataL(int chip) const
 {
     juce::ScopedLock sl(processLock);
