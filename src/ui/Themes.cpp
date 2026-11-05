@@ -10,7 +10,7 @@ const char* const kSettingKey = "uiTheme";
 
 juce::Colour c(juce::uint32 argb) { return juce::Colour(argb); }
 
-// 同梱テーマ。どれも 本文・控えめな文字 4.5:1 以上、操作部品の縁・フォーカス・役割の色 3:1 以上（パネルに対して）。
+// 同梱テーマ。どれも 文字に使う色 4.5:1 以上、操作部品の縁・フォーカス 3:1 以上（パネルに対して）。
 ThemeData midnight()
 {
     ThemeData t;
@@ -19,8 +19,9 @@ ThemeData midnight()
     t.fieldEdge = c(0xff707888); t.text = c(0xffe4e7ec); t.textDim = c(0xff9aa2b0);
     t.accent = c(0xffffa53c); t.accentDim = c(0xff7a5428); t.onAccent = c(0xff15171c); t.focusRing = c(0xffffa53c);
     t.carrier = c(0xff4fc3f7); t.modulator = c(0xffc792ea);
-    t.meterGreen = c(0xff5fd068); t.meterYellow = c(0xffffd54f); t.meterRed = c(0xffff5252); t.meterRms = c(0x59e4e7ec);
+    t.meterGreen = c(0xff5fd068); t.meterYellow = c(0xffffd54f); t.meterRed = c(0xffff6363); t.meterRms = c(0x59e4e7ec);
     t.scrim = c(0x8c0b0c0f); t.lcdBack = c(0xff2a1d0c); t.lcdOn = c(0xffffb347); t.lcdOff = c(0xff3d2b13);
+    t.keyWhite = c(0xffe4e7ec); t.keyBlack = c(0xff20232a);
     return t;
 }
 
@@ -30,10 +31,10 @@ ThemeData daylight()
     t.name = "Daylight";
     t.background = c(0xffe9ecf0); t.panel = c(0xfff6f7f9); t.panelRaised = c(0xfffdfdfe); t.outline = c(0xffd3d8df);
     t.fieldEdge = c(0xff7d8594); t.text = c(0xff1b1f27); t.textDim = c(0xff535b69);
-    t.accent = c(0xffb34d00); t.accentDim = c(0xfff2cfae); t.onAccent = c(0xfffdfdfe); t.focusRing = c(0xffb34d00);
+    t.accent = c(0xffad4a00); t.accentDim = c(0xfff2cfae); t.onAccent = c(0xfffdfdfe); t.focusRing = c(0xffad4a00);
     t.carrier = c(0xff0a69ad); t.modulator = c(0xff8237b8);
-    t.meterGreen = c(0xff23893a); t.meterYellow = c(0xffb88a00); t.meterRed = c(0xffcc2f2f); t.meterRms = c(0x591b1f27);
-    t.scrim = c(0x660b0c0f);
+    t.meterGreen = c(0xff23893a); t.meterYellow = c(0xff876500); t.meterRed = c(0xffc02a2a); t.meterRms = c(0x591b1f27);
+    t.scrim = c(0x660b0c0f); t.keyWhite = c(0xfffdfdfe); t.keyBlack = c(0xff3a404c);
     t.channelSaturation = 0.75f; t.channelBrightness = 0.72f;
     return t;
 }
@@ -47,7 +48,7 @@ ThemeData amberLcd()
     t.accent = c(0xffffb347); t.accentDim = c(0xff5e3f17); t.onAccent = c(0xff110b04); t.focusRing = c(0xfffff0c8);
     t.carrier = c(0xffffd27a); t.modulator = c(0xfff08a5d);
     t.meterGreen = c(0xffffb347); t.meterYellow = c(0xffffd27a); t.meterRed = c(0xffff6a3d); t.meterRms = c(0x59ffd08a);
-    t.scrim = c(0x99050302);
+    t.scrim = c(0x99050302); t.keyWhite = c(0xff6b4d24); t.keyBlack = c(0xff1a1208);
     t.roundness = 0.2f; t.knob = static_cast<int>(shape::Knob::pointer); t.button = static_cast<int>(shape::Button::outline);
     t.titleGradient = false; t.monochromeChannels = true;
     return t;
@@ -62,7 +63,7 @@ ThemeData highContrast()
     t.accent = c(0xffffd400); t.accentDim = c(0xff6e5c00); t.onAccent = c(0xff050505); t.focusRing = c(0xff00e5ff);
     t.carrier = c(0xff5cc8ff); t.modulator = c(0xffff85e4);
     t.meterGreen = c(0xff39e75f); t.meterYellow = c(0xffffd400); t.meterRed = c(0xffff4d4d); t.meterRms = c(0x66f7f7f7);
-    t.scrim = c(0xb3000000);
+    t.scrim = c(0xb3000000); t.keyWhite = c(0xfff7f7f7); t.keyBlack = c(0xff0c0c0c);
     t.roundness = 0.35f; t.knob = static_cast<int>(shape::Knob::filled); t.button = static_cast<int>(shape::Button::outline);
     t.titleGradient = false; t.channelSaturation = 0.7f; t.channelBrightness = 1.0f;
     return t;
@@ -84,6 +85,7 @@ const ColourField kColourFields[] = {
     { "modulator", &ThemeData::modulator }, { "meterGreen", &ThemeData::meterGreen }, { "meterYellow", &ThemeData::meterYellow },
     { "meterRed", &ThemeData::meterRed }, { "meterRms", &ThemeData::meterRms }, { "scrim", &ThemeData::scrim },
     { "lcdBack", &ThemeData::lcdBack }, { "lcdOn", &ThemeData::lcdOn }, { "lcdOff", &ThemeData::lcdOff },
+    { "keyWhite", &ThemeData::keyWhite }, { "keyBlack", &ThemeData::keyBlack },
 };
 const char* const kKnobNames[] = { "arc", "pointer", "filled" };
 const char* const kButtonNames[] = { "filled", "outline" };
@@ -166,6 +168,22 @@ juce::String themeToJson(const ThemeData& t, const juce::String& baseName)
     return juce::JSON::toString(juce::var(root));
 }
 
+// チャンネルの色は文字にも使う。どの面でも 4.5:1 に届くまで文字色へ寄せる（色相はなるべく残す）。
+juce::Colour readableChannelColour(juce::Colour colour)
+{
+    const juce::Colour surfaces[] { colours::background, colours::panel, colours::panelRaised,
+                                    colours::panel.overlaidWith(colours::accent.withAlpha(alpha::selected)) };
+    for (float mix = 0.0f; mix < 1.0f; mix += 0.04f) {
+        const auto candidate = colour.interpolatedWith(colours::text, mix);
+        float worst = 21.0f;
+        for (const auto& surface : surfaces)
+            worst = juce::jmin(worst, contrastRatio(candidate, surface));
+        if (worst >= 4.5f)
+            return candidate;
+    }
+    return colours::text;
+}
+
 void apply(const ThemeData& t)
 {
     colours::background = t.background; colours::panel = t.panel; colours::panelRaised = t.panelRaised;
@@ -175,6 +193,7 @@ void apply(const ThemeData& t)
     colours::meterGreen = t.meterGreen; colours::meterYellow = t.meterYellow; colours::meterRed = t.meterRed;
     colours::meterRms = t.meterRms; colours::scrim = t.scrim;
     colours::lcdBack = t.lcdBack; colours::lcdOn = t.lcdOn; colours::lcdOff = t.lcdOff;
+    colours::keyWhite = t.keyWhite; colours::keyBlack = t.keyBlack;
     shape::roundness = t.roundness;
     shape::knob = static_cast<shape::Knob>(juce::jlimit(0, 2, t.knob));
     shape::button = static_cast<shape::Button>(juce::jlimit(0, 1, t.button));
@@ -183,6 +202,8 @@ void apply(const ThemeData& t)
     shape::monochromeChannels = t.monochromeChannels;
     shape::channelSaturation = t.channelSaturation;
     shape::channelBrightness = t.channelBrightness;
+    for (int i = 0; i < 16; ++i)
+        colours::channelTable[static_cast<size_t>(i)] = readableChannelColour(colours::rawChannelColour(i));
 }
 
 juce::String& currentName()
@@ -192,6 +213,16 @@ juce::String& currentName()
 }
 
 } // namespace
+
+float contrastRatio(juce::Colour a, juce::Colour b)
+{
+    const auto luminance = [](juce::Colour c) {
+        const auto linear = [](float v) { return v <= 0.03928f ? v / 12.92f : std::pow((v + 0.055f) / 1.055f, 2.4f); };
+        return 0.2126f * linear(c.getFloatRed()) + 0.7152f * linear(c.getFloatGreen()) + 0.0722f * linear(c.getFloatBlue());
+    };
+    const float la = luminance(a), lb = luminance(b);
+    return (juce::jmax(la, lb) + 0.05f) / (juce::jmin(la, lb) + 0.05f);
+}
 
 juce::Array<ThemeData> availableThemes()
 {

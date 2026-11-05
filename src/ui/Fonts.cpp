@@ -30,15 +30,20 @@ FontChoice& choiceStorage()
     return choice;
 }
 
-void restyleLabels(juce::Component& c)
+void restyleText(juce::Component& c)
 {
     for (auto* child : c.getChildren()) {
-        if (auto* label = dynamic_cast<juce::Label*>(child)) {
-            const auto& props = label->getProperties();
-            if (props.contains("uiFontHeight"))
-                setLabelFont(*label, static_cast<float>(props["uiFontHeight"]), props["uiFontBold"], props["uiFontMono"]);
+        const auto& props = child->getProperties();
+        if (props.contains("uiFontHeight")) {
+            const auto height = static_cast<float>(props["uiFontHeight"]);
+            if (auto* label = dynamic_cast<juce::Label*>(child)) {
+                setLabelFont(*label, height, props["uiFontBold"], props["uiFontMono"], props["uiFontDim"]);
+            } else if (auto* editor = dynamic_cast<juce::TextEditor*>(child)) {
+                setEditorFont(*editor, height, props["uiFontMono"]);
+                editor->applyColourToAllText(colours::text);
+            }
         }
-        restyleLabels(*child);
+        restyleText(*child);
     }
 }
 
@@ -76,7 +81,7 @@ juce::Typeface::Ptr customTypeface()
 
 void refreshFonts(juce::Component& root)
 {
-    restyleLabels(root);
+    restyleText(root);
     root.sendLookAndFeelChange(); // スライダーの数値欄などを作り直す
     root.repaint();
 }

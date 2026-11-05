@@ -35,9 +35,9 @@ private:
 
     _3HSPlugAudioProcessor& audioProcessor;
     ui::LookAndFeel lookAndFeel;
-    juce::TooltipWindow tooltipWindow { this, 600 };
 
     juce::Component content;
+    juce::TooltipWindow tooltipWindow { &content, 800 }; // UIスケールがかかる側に置く
     ui::TitleBar titleBar;
     juce::Component synthPage;
     ui::ChannelStatusPanel channelStatus;

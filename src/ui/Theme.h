@@ -31,6 +31,13 @@ inline juce::Colour scrim        { 0x8c0b0c0f }; // 設定を開いたときの�
 inline juce::Colour lcdBack      { 0xff2a1d0c };
 inline juce::Colour lcdOn        { 0xffffb347 };
 inline juce::Colour lcdOff       { 0xff3d2b13 };
+inline juce::Colour keyWhite     { 0xffe4e7ec }; // 鍵盤の絵（テーマの明暗によらず白鍵に見える色）
+inline juce::Colour keyBlack     { 0xff20232a };
+
+// 状態を示す色。メーターの色を共有するが、状態のコードではこの名前を使う
+inline juce::Colour& success = meterGreen;
+inline juce::Colour& warning = meterYellow;
+inline juce::Colour& error   = meterRed;
 } // namespace colours
 
 // 見た目の形（テーマで変わる）
@@ -49,16 +56,54 @@ inline float channelBrightness = 0.95f;
 inline float r(float base) { return base * roundness; } // 角の半径
 } // namespace shape
 
+// 角の丸みの段階。必ず shape::r() を通す。
+namespace radius {
+inline constexpr float fine    = 1.0f; // メーターのセグメント
+inline constexpr float cell    = 2.0f; // 小さなセル、細いトラック
+inline constexpr float data    = 3.0f; // 計器窓、ドラムのセル、チェックボックス、LCD
+inline constexpr float control = 4.0f; // ボタン、タブ、コンボボックス、入力欄、選択枠
+inline constexpr float section = 6.0f; // 区画
+inline constexpr float overlay = 8.0f; // 設定、Options、確認ダイアログ
+} // namespace radius
+
+// 線の太さ
+namespace stroke {
+inline constexpr float hairline = 1.0f;
+inline constexpr float selected = 1.5f;
+inline constexpr float focus    = 2.0f;
+} // namespace stroke
+
+// 状態を表す不透明度（値そのものを濃さで示す描画は対象外）
+namespace alpha {
+inline constexpr float selected = 0.12f; // 選択中の面
+inline constexpr float hover    = 0.10f; // マウスを載せたときに重ねる色
+inline constexpr float down     = 0.20f; // 押したときに重ねる色
+inline constexpr float disabled = 0.50f; // 使えない部品
+inline constexpr float flash    = 0.60f; // 鳴った・変わった瞬間（ここから消えていく）
+inline constexpr float wash     = 0.50f; // 面をうっすら分ける
+inline constexpr float voiceFill = 0.30f; // ボイスのセルの塗りの上限（上に文字が載る）
+} // namespace alpha
+
+// 操作の状態。brighter() は明るいテーマの白い面で効かないので、文字の色を重ねる。
+namespace state {
+inline juce::Colour hover(juce::Colour c) { return c.overlaidWith(colours::text.withAlpha(alpha::hover)); }
+inline juce::Colour down(juce::Colour c)  { return c.overlaidWith(colours::text.withAlpha(alpha::down)); }
+} // namespace state
+
 namespace colours {
-// MIDIチャンネルごとの色（1～16 → 0～15）
-inline juce::Colour forChannel(int index0)
+// MIDIチャンネルごとのテーマの色（1～16 → 0～15）。表示には forChannel() を使う。
+inline juce::Colour rawChannelColour(int index0)
 {
     const float step = static_cast<float>((index0 * 5) % 16) / 15.0f;
     if (shape::monochromeChannels)
-        return accent.withMultipliedBrightness(0.55f + 0.45f * step);
+        return accent.withMultipliedBrightness(0.7f + 0.3f * step); // 文字にも使うので暗くしすぎない
     return juce::Colour::fromHSV(static_cast<float>((index0 * 5) % 16) / 16.0f, shape::channelSaturation,
                                  shape::channelBrightness, 1.0f);
 }
+
+// 文字にも使うので、テーマを適用するときに面に対して読める色へ整える（Themes.cpp）
+inline std::array<juce::Colour, 16> channelTable;
+inline juce::Colour forChannel(int index0) { return channelTable[static_cast<size_t>(index0 & 15)]; }
 } // namespace colours
 
 // 文字サイズ（13pxを本文とし、約1.2倍刻み。機能的な文字は11px以上）
@@ -98,31 +143,85 @@ inline juce::Font monoFont(float height)
     return juce::Font(juce::FontOptions(juce::Font::getDefaultMonospacedFontName(), height, juce::Font::plain));
 }
 
-// ラベルのフォントを設定し、フォントを切り替えたときに作り直せるよう大きさと種類を覚えておく
-inline void setLabelFont(juce::Label& label, float height, bool bold = false, bool mono = false)
+// ラベルのフォントを設定し、テーマやフォントを切り替えたときに作り直せるよう種類を覚えておく。
+// dim は控えめな文字（textDim）。色を setColour で固定すると、テーマを変えても古い色のまま残る。
+inline void setLabelFont(juce::Label& label, float height, bool bold = false, bool mono = false, bool dim = false)
 {
     auto& props = label.getProperties();
     props.set("uiFontHeight", height);
     props.set("uiFontBold", bold);
     props.set("uiFontMono", mono);
+    props.set("uiFontDim", dim);
     label.setFont(mono ? monoFont(height) : font(height, bold));
+    if (dim)
+        label.setColour(juce::Label::textColourId, colours::textDim);
+}
+
+// 入力欄のフォントを設定する。TextEditor は入力済みの文字の色とフォントを覚えるので、
+// 切り替えのときに作り直せるようここを通す。
+inline void setEditorFont(juce::TextEditor& editor, float height, bool mono = true)
+{
+    auto& props = editor.getProperties();
+    props.set("uiFontHeight", height);
+    props.set("uiFontMono", mono);
+    editor.applyFontToAllText(mono ? monoFont(height) : font(height));
 }
 
 // キーボードで選んだ部品のまわりに描くフォーカスリング（すぐに出す）
-inline void drawFocusRing(juce::Graphics& g, juce::Rectangle<float> r, float radius = 4.0f)
+inline void drawFocusRing(juce::Graphics& g, juce::Rectangle<float> r, float cornerRadius = radius::control)
 {
     g.setColour(colours::focusRing);
-    g.drawRoundedRectangle(r.reduced(1.0f), shape::r(radius), 2.0f);
+    g.drawRoundedRectangle(r.reduced(1.0f), shape::r(cornerRadius), stroke::focus);
+}
+
+// 選択中のセル・行・列の印
+inline void drawSelection(juce::Graphics& g, juce::Rectangle<float> r, float cornerRadius = radius::control)
+{
+    g.setColour(colours::accent.withAlpha(alpha::selected));
+    g.fillRoundedRectangle(r, shape::r(cornerRadius));
+    g.setColour(colours::accent);
+    g.drawRoundedRectangle(r.reduced(stroke::selected * 0.5f), shape::r(cornerRadius), stroke::selected);
+}
+
+// UIスケールがかかった画面全体。ここを親にしたポップアップはテーマとスケールを受け継ぐ。
+inline constexpr const char* kRootComponentId = "mainUI";
+
+inline juce::Component& uiRoot(juce::Component& from)
+{
+    for (auto* c = &from; c != nullptr; c = c->getParentComponent())
+        if (c->getComponentID() == kRootComponentId)
+            return *c;
+    return *from.getTopLevelComponent();
+}
+
+// 元に戻せない操作の確認。AlertWindow::showAsync は親のない窓を作り、JUCE既定の LookAndFeel で
+// 描いてしまうので、画面の中の子として開く。
+inline void showConfirm(juce::Component& from, const juce::String& title, const juce::String& message,
+                        const juce::String& action, std::function<void()> onConfirm)
+{
+    auto& root = uiRoot(from);
+    auto* window = new juce::AlertWindow(title, message, juce::MessageBoxIconType::WarningIcon);
+    window->setOpaque(false); // 角を丸めるので下の画面が見える
+    root.addChildComponent(window);
+    window->sendLookAndFeelChange();
+    window->addButton(action, 1, juce::KeyPress(juce::KeyPress::returnKey));
+    window->addButton("Cancel", 0, juce::KeyPress(juce::KeyPress::escapeKey));
+    window->setCentrePosition(root.getLocalBounds().getCentre());
+    const juce::Component::SafePointer<juce::Component> safe(&from);
+    window->enterModalState(true, juce::ModalCallbackFunction::create([safe, onConfirm = std::move(onConfirm)](int result) {
+        if (safe != nullptr && result == 1)
+            onConfirm();
+    }), true);
 }
 
 // 区画の背景と見出しを描く。見出しの下の領域を返す。
 inline juce::Rectangle<int> drawSection(juce::Graphics& g, juce::Rectangle<int> bounds, const juce::String& title)
 {
     g.setColour(colours::panel);
-    g.fillRoundedRectangle(bounds.toFloat(), shape::r(6.0f));
+    g.fillRoundedRectangle(bounds.toFloat(), shape::r(radius::section));
     if (shape::sectionBorders) {
         g.setColour(colours::outline);
-        g.drawRoundedRectangle(bounds.toFloat().reduced(0.5f), shape::r(6.0f), 1.0f);
+        g.drawRoundedRectangle(bounds.toFloat().reduced(0.5f), shape::r(radius::section), stroke::hairline);
     }
     if (title.isEmpty())
         return bounds.reduced(space::sm);
@@ -177,7 +276,7 @@ public:
         setColour(juce::Label::textColourId, colours::text);
         setColour(juce::TextEditor::backgroundColourId, colours::panelRaised);
         setColour(juce::TextEditor::outlineColourId, colours::fieldEdge);
-        setColour(juce::TextEditor::focusedOutlineColourId, colours::accent);
+        setColour(juce::TextEditor::focusedOutlineColourId, colours::focusRing);
         setColour(juce::PopupMenu::backgroundColourId, colours::panelRaised);
         setColour(juce::PopupMenu::highlightedBackgroundColourId, colours::accent);
         setColour(juce::PopupMenu::highlightedTextColourId, colours::onAccent);
@@ -195,6 +294,7 @@ public:
         setColour(juce::TabbedButtonBar::tabOutlineColourId, colours::fieldEdge);
         setColour(juce::TabbedButtonBar::tabTextColourId, colours::text);
         setColour(juce::TabbedButtonBar::frontTextColourId, colours::accent);
+        setColour(juce::ScrollBar::thumbColourId, colours::fieldEdge); // JUCEの既定はアクセント
     }
 
     int getTabButtonOverlap(int) override { return 0; }
@@ -223,19 +323,19 @@ public:
         const auto bounds = button.getLocalBounds().toFloat().reduced(2.0f);
         const bool selected = button.isFrontTab();
         const bool outline = shape::button == shape::Button::outline;
-        const float alpha = button.isEnabled() ? 1.0f : 0.5f;
+        const float opacity = button.isEnabled() ? 1.0f : alpha::disabled;
         auto fill = selected ? colours::accent : colours::panelRaised;
         if (outline)
-            fill = (selected ? colours::accent : colours::text).withAlpha(down ? 0.22f : 0.10f);
+            fill = (selected ? colours::accent : colours::text).withAlpha(down ? alpha::down : alpha::hover);
         else if (down || highlighted)
-            fill = fill.brighter(down ? 0.2f : 0.08f);
+            fill = down ? state::down(fill) : state::hover(fill);
         if (!outline || selected || highlighted || down) {
-            g.setColour(fill.withMultipliedAlpha(alpha));
-            g.fillRoundedRectangle(bounds, shape::r(4.0f));
+            g.setColour(fill.withMultipliedAlpha(opacity));
+            g.fillRoundedRectangle(bounds, shape::r(radius::control));
         }
-        g.setColour((selected ? colours::accent : colours::fieldEdge).withMultipliedAlpha(alpha));
-        g.drawRoundedRectangle(bounds, shape::r(4.0f), selected ? 1.5f : 1.0f);
-        g.setColour((selected ? (outline ? colours::accent : colours::onAccent) : colours::text).withMultipliedAlpha(alpha));
+        g.setColour((selected ? colours::accent : colours::fieldEdge).withMultipliedAlpha(opacity));
+        g.drawRoundedRectangle(bounds, shape::r(radius::control), selected ? stroke::selected : stroke::hairline);
+        g.setColour((selected ? (outline ? colours::accent : colours::onAccent) : colours::text).withMultipliedAlpha(opacity));
         g.setFont(getTabButtonFont(button, static_cast<float>(button.getHeight())));
         g.drawFittedText(button.getButtonText(), bounds.toNearestInt().reduced(8, 2), juce::Justification::centred, 1);
         if (button.hasKeyboardFocus(false))
@@ -252,9 +352,9 @@ public:
         const bool enabled = slider.isEnabled();
         auto fill = slider.findColour(juce::Slider::rotarySliderFillColourId);
         if (!enabled)
-            fill = colours::textDim.withAlpha(0.4f);
-        const auto trackColour = slider.findColour(juce::Slider::rotarySliderOutlineColourId).withMultipliedAlpha(enabled ? 1.0f : 0.5f);
-        const bool hot = slider.isMouseOverOrDragging();
+            fill = colours::textDim.withAlpha(alpha::disabled);
+        const auto trackColour = slider.findColour(juce::Slider::rotarySliderOutlineColourId).withMultipliedAlpha(enabled ? 1.0f : alpha::disabled);
+        const auto bodyColour = slider.isMouseOverOrDragging() ? state::hover(colours::panelRaised) : colours::panelRaised;
 
         // 0をまたぐ範囲（Fine、Key shift、Feedback）は中央から弧を描く
         float fromAngle = startAngle;
@@ -271,7 +371,7 @@ public:
             // 細い目盛りの輪と、値の色の指針
             arc(radius - 1.5f, startAngle, endAngle, 1.5f, trackColour);
             const float bodyR = radius - 4.0f;
-            g.setColour(colours::panelRaised.brighter(hot ? 0.15f : 0.0f));
+            g.setColour(bodyColour);
             g.fillEllipse(centre.x - bodyR, centre.y - bodyR, bodyR * 2.0f, bodyR * 2.0f);
             g.setColour(trackColour);
             g.drawEllipse(centre.x - bodyR, centre.y - bodyR, bodyR * 2.0f, bodyR * 2.0f, 1.0f);
@@ -296,7 +396,7 @@ public:
         }
 
         const float knobR = arcRadius - lineW * 1.1f;
-        g.setColour(colours::panelRaised.brighter(hot ? 0.15f : 0.0f));
+        g.setColour(bodyColour);
         g.fillEllipse(centre.x - knobR, centre.y - knobR, knobR * 2.0f, knobR * 2.0f);
         juce::Point<float> tip(centre.x + (knobR - 1.5f) * std::sin(angle), centre.y - (knobR - 1.5f) * std::cos(angle));
         g.setColour(enabled ? colours::text : colours::textDim);
@@ -314,12 +414,14 @@ public:
         auto bounds = juce::Rectangle<int>(x, y, width, height).toFloat();
         auto track = bounds.withSizeKeepingCentre(4.0f, bounds.getHeight());
         g.setColour(colours::fieldEdge);
-        g.fillRoundedRectangle(track, shape::r(2.0f));
+        g.fillRoundedRectangle(track, shape::r(radius::cell));
         g.setColour(colours::accent);
-        g.fillRoundedRectangle(track.withTop(sliderPos), shape::r(2.0f));
+        g.fillRoundedRectangle(track.withTop(sliderPos), shape::r(radius::cell));
         auto thumb = juce::Rectangle<float>(juce::jmin(bounds.getWidth(), 30.0f), 12.0f).withCentre({ bounds.getCentreX(), sliderPos });
-        g.setColour(colours::panelRaised.brighter(0.3f));
-        g.fillRoundedRectangle(thumb, shape::r(3.0f));
+        g.setColour(state::down(colours::panelRaised));
+        g.fillRoundedRectangle(thumb, shape::r(radius::data));
+        g.setColour(colours::fieldEdge);
+        g.drawRoundedRectangle(thumb.reduced(0.5f), shape::r(radius::data), stroke::hairline);
         g.setColour(colours::text);
         g.drawLine(thumb.getX() + 4.0f, sliderPos, thumb.getRight() - 4.0f, sliderPos, 1.5f);
     }
@@ -329,32 +431,33 @@ public:
     {
         auto bounds = button.getLocalBounds().toFloat().reduced(0.5f);
         const bool on = button.getToggleState();
+        const float opacity = button.isEnabled() ? 1.0f : alpha::disabled;
         if (shape::button == shape::Button::outline) {
             // 枠だけ。押したとき・マウスを載せたときは面をうっすら塗る
             if (down || highlighted || on) {
-                g.setColour((on ? colours::accent : colours::text).withAlpha(down ? 0.22f : 0.10f));
-                g.fillRoundedRectangle(bounds, shape::r(4.0f));
+                g.setColour((on ? colours::accent : colours::text).withAlpha((down ? alpha::down : alpha::hover) * opacity));
+                g.fillRoundedRectangle(bounds, shape::r(radius::control));
             }
-            g.setColour(on ? colours::accent : colours::fieldEdge);
-            g.drawRoundedRectangle(bounds, shape::r(4.0f), on ? 1.5f : 1.0f);
+            g.setColour((on ? colours::accent : colours::fieldEdge).withMultipliedAlpha(opacity));
+            g.drawRoundedRectangle(bounds, shape::r(radius::control), on ? stroke::selected : stroke::hairline);
             return;
         }
         auto colour = on ? button.findColour(juce::TextButton::buttonOnColourId) : backgroundColour;
         if (down)
-            colour = colour.brighter(0.2f);
+            colour = state::down(colour);
         else if (highlighted)
-            colour = colour.brighter(0.08f);
-        g.setColour(colour);
-        g.fillRoundedRectangle(bounds, shape::r(4.0f));
-        g.setColour(colours::fieldEdge);
-        g.drawRoundedRectangle(bounds, shape::r(4.0f), 1.0f);
+            colour = state::hover(colour);
+        g.setColour(colour.withMultipliedAlpha(opacity));
+        g.fillRoundedRectangle(bounds, shape::r(radius::control));
+        g.setColour(colours::fieldEdge.withMultipliedAlpha(opacity));
+        g.drawRoundedRectangle(bounds, shape::r(radius::control), stroke::hairline);
     }
 
     void drawButtonText(juce::Graphics& g, juce::TextButton& button, bool highlighted, bool down) override
     {
         if (shape::button == shape::Button::outline && button.getToggleState()) {
             g.setFont(getTextButtonFont(button, button.getHeight()));
-            g.setColour(colours::accent.withMultipliedAlpha(button.isEnabled() ? 1.0f : 0.5f));
+            g.setColour(colours::accent.withMultipliedAlpha(button.isEnabled() ? 1.0f : alpha::disabled));
             g.drawFittedText(button.getButtonText(), button.getLocalBounds().reduced(4, 2), juce::Justification::centred, 1);
             return;
         }
@@ -380,10 +483,98 @@ public:
     juce::Font getAlertWindowTitleFont() override { return font(type::title, true); }
     juce::Font getAlertWindowMessageFont() override { return font(type::body); }
     juce::Font getAlertWindowFont() override { return font(type::body); }
+    int getAlertWindowButtonHeight() override { return space::control; }
+
+    // JUCEの既定は角の丸みと枠の太さ、警告アイコンの色が固定なので、ここで描く
+    void drawAlertBox(juce::Graphics& g, juce::AlertWindow& alert, const juce::Rectangle<int>&, juce::TextLayout& layout) override
+    {
+        const auto bounds = alert.getLocalBounds().toFloat();
+        g.setColour(colours::panel);
+        g.fillRoundedRectangle(bounds, shape::r(radius::overlay));
+        g.setColour(colours::fieldEdge);
+        g.drawRoundedRectangle(bounds.reduced(0.5f), shape::r(radius::overlay), stroke::hairline);
+
+        int iconSpace = 0;
+        if (alert.getAlertType() != juce::MessageBoxIconType::NoIcon) {
+            iconSpace = 80; // AlertWindow が文字の左に空ける幅
+            const auto icon = juce::Rectangle<float>(40.0f, 36.0f).withPosition(static_cast<float>(space::lg + space::xs), static_cast<float>(space::xl));
+            juce::Path triangle;
+            triangle.addTriangle(icon.getCentreX(), icon.getY(), icon.getRight(), icon.getBottom(), icon.getX(), icon.getBottom());
+            g.setColour(colours::warning);
+            g.fillPath(triangle.createPathWithRoundedCorners(shape::r(radius::data)));
+            g.setColour(colours::panel);
+            g.fillRect(juce::Rectangle<float>(3.0f, 14.0f).withCentre({ icon.getCentreX(), icon.getY() + 18.0f }));
+            g.fillRect(juce::Rectangle<float>(3.0f, 3.0f).withCentre({ icon.getCentreX(), icon.getY() + 30.0f }));
+        }
+        layout.draw(g, juce::Rectangle<int>(iconSpace, 30, alert.getWidth() - iconSpace, alert.getHeight() - getAlertWindowButtonHeight() - 20).toFloat());
+    }
+
+    void drawCallOutBoxBackground(juce::CallOutBox&, juce::Graphics& g, const juce::Path& path, juce::Image&) override
+    {
+        g.setColour(colours::panel);
+        g.fillPath(path);
+        g.setColour(colours::fieldEdge);
+        g.strokePath(path, juce::PathStrokeType(stroke::hairline));
+    }
+
+    float getCallOutBoxCornerSize(const juce::CallOutBox&) override { return shape::r(radius::overlay); }
+    int getCallOutBoxBorderSize(const juce::CallOutBox&) override { return space::lg; }
+
+    void drawComboBox(juce::Graphics& g, int width, int height, bool isButtonDown, int, int, int, int, juce::ComboBox& box) override
+    {
+        const auto bounds = juce::Rectangle<int>(width, height).toFloat();
+        const float opacity = box.isEnabled() ? 1.0f : alpha::disabled;
+        const auto fill = box.findColour(juce::ComboBox::backgroundColourId);
+        g.setColour((isButtonDown ? state::down(fill) : fill).withMultipliedAlpha(opacity));
+        g.fillRoundedRectangle(bounds, shape::r(radius::control));
+        g.setColour(box.findColour(juce::ComboBox::outlineColourId).withMultipliedAlpha(opacity));
+        g.drawRoundedRectangle(bounds.reduced(0.5f), shape::r(radius::control), stroke::hairline);
+
+        const juce::Rectangle<int> arrowZone(width - 30, 0, 20, height);
+        juce::Path arrow;
+        arrow.startNewSubPath(static_cast<float>(arrowZone.getX()) + 3.0f, static_cast<float>(arrowZone.getCentreY()) - 2.0f);
+        arrow.lineTo(static_cast<float>(arrowZone.getCentreX()), static_cast<float>(arrowZone.getCentreY()) + 3.0f);
+        arrow.lineTo(static_cast<float>(arrowZone.getRight()) - 3.0f, static_cast<float>(arrowZone.getCentreY()) - 2.0f);
+        g.setColour(box.findColour(juce::ComboBox::arrowColourId).withMultipliedAlpha(opacity));
+        g.strokePath(arrow, juce::PathStrokeType(stroke::focus));
+    }
+
+    void drawTickBox(juce::Graphics& g, juce::Component&, float x, float y, float w, float h, bool ticked,
+                     bool isEnabled, bool highlighted, bool down) override
+    {
+        const juce::Rectangle<float> box(x, y, w, h);
+        const float opacity = isEnabled ? 1.0f : alpha::disabled;
+        const auto fill = down ? state::down(colours::panelRaised) : highlighted ? state::hover(colours::panelRaised) : colours::panelRaised;
+        g.setColour(fill.withMultipliedAlpha(opacity));
+        g.fillRoundedRectangle(box, shape::r(radius::data));
+        g.setColour(colours::fieldEdge.withMultipliedAlpha(opacity));
+        g.drawRoundedRectangle(box.reduced(0.5f), shape::r(radius::data), stroke::hairline);
+        if (ticked) {
+            g.setColour(colours::accent.withMultipliedAlpha(opacity));
+            const auto tick = getTickShape(0.75f);
+            g.fillPath(tick, tick.getTransformToScaleToFit(box.reduced(4.0f, 5.0f), false));
+        }
+    }
+
+    void fillTextEditorBackground(juce::Graphics& g, int width, int height, juce::TextEditor& editor) override
+    {
+        g.setColour(editor.findColour(juce::TextEditor::backgroundColourId).withMultipliedAlpha(editor.isEnabled() ? 1.0f : alpha::disabled));
+        g.fillRoundedRectangle(juce::Rectangle<int>(width, height).toFloat(), shape::r(radius::control));
+    }
+
+    void drawTextEditorOutline(juce::Graphics& g, int width, int height, juce::TextEditor& editor) override
+    {
+        const auto bounds = juce::Rectangle<int>(width, height).toFloat();
+        g.setColour(editor.findColour(juce::TextEditor::outlineColourId).withMultipliedAlpha(editor.isEnabled() ? 1.0f : alpha::disabled));
+        g.drawRoundedRectangle(bounds.reduced(0.5f), shape::r(radius::control), stroke::hairline);
+        // 枠の太さは変えず、入力中はリングを重ねる（マウスで入ったときも入力先が分かるように）
+        if (editor.isEnabled() && editor.hasKeyboardFocus(true) && !editor.isReadOnly())
+            drawFocusRing(g, bounds);
+    }
 
     juce::Rectangle<int> getTooltipBounds(const juce::String& tipText, juce::Point<int> screenPos, juce::Rectangle<int> parentArea) override
     {
-        const auto layout = tooltipLayout(tipText, juce::Colours::black);
+        const auto layout = tooltipLayout(tipText, colours::text);
         const auto w = static_cast<int>(layout.getWidth() + 14.0f);
         const auto h = static_cast<int>(layout.getHeight() + 6.0f);
         return juce::Rectangle<int>(screenPos.x > parentArea.getCentreX() ? screenPos.x - (w + 12) : screenPos.x + 24,
@@ -397,7 +588,7 @@ public:
         g.setColour(colours::panelRaised);
         g.fillRect(bounds.toFloat());
         g.setColour(colours::fieldEdge);
-        g.drawRect(bounds.toFloat(), 1.0f);
+        g.drawRect(bounds.toFloat(), stroke::hairline);
         tooltipLayout(text, colours::text).draw(g, bounds.toFloat().reduced(7.0f, 3.0f));
     }
 
@@ -406,7 +597,7 @@ public:
         const float box = juce::jmin(20.0f, button.getHeight() * 0.7f);
         drawTickBox(g, button, 4.0f, (button.getHeight() - box) * 0.5f, box, box, button.getToggleState(),
                     button.isEnabled(), highlighted, down);
-        g.setColour(button.findColour(juce::ToggleButton::textColourId).withMultipliedAlpha(button.isEnabled() ? 1.0f : 0.5f));
+        g.setColour(button.findColour(juce::ToggleButton::textColourId).withMultipliedAlpha(button.isEnabled() ? 1.0f : alpha::disabled));
         g.setFont(font(type::body));
         g.drawFittedText(button.getButtonText(), button.getLocalBounds().withTrimmedLeft(juce::roundToInt(box) + 10).withTrimmedRight(2),
                          juce::Justification::centredLeft, 2);
@@ -429,7 +620,7 @@ public:
     {
         auto* label = juce::LookAndFeel_V4::createSliderTextBox(slider);
         setLabelFont(*label, type::small, false, true);
-        label->setColour(juce::Label::outlineWhenEditingColourId, colours::accent);
+        label->setColour(juce::Label::outlineWhenEditingColourId, colours::focusRing);
         return label;
     }
 };

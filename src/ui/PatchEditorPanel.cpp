@@ -73,9 +73,12 @@ Knob::Knob(const juce::String& n) : name(n)
 
 void Knob::paint(juce::Graphics& g)
 {
-    g.setColour(isEnabled() ? colours::textDim : colours::textDim.withAlpha(0.4f));
+    g.setColour(isEnabled() ? colours::textDim : colours::textDim.withAlpha(alpha::disabled));
     g.setFont(font(type::caption, true));
-    g.drawFittedText(name, getLocalBounds().removeFromTop(13), juce::Justification::centred, 1, 0.7f); // 字幅の広いフォントでは縮める
+    // 文字は縮めず、入らないときは略す（Sus.）
+    const auto label = getLocalBounds().removeFromTop(13);
+    const bool fits = juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), name) <= label.getWidth();
+    g.drawText(fits ? name : name.substring(0, 3) + ".", label, juce::Justification::centred, false);
 }
 
 void Knob::resized()
@@ -214,10 +217,8 @@ void OperatorPanel::paint(juce::Graphics& g)
     g.drawText("OP" + juce::String(index + 1), header.removeFromLeft(40), juce::Justification::centredLeft);
     g.setColour(colours::textDim);
     g.setFont(font(type::caption));
-    juce::String role = carrier ? "Carrier" : "Mod";
-    if (feedbackTarget)
-        role << " + FB";
-    g.drawFittedText(role, header.removeFromLeft(64), juce::Justification::centredLeft, 1, 0.7f);
+    const juce::String role = feedbackTarget ? (carrier ? "Car + FB" : "Mod + FB") : (carrier ? "Carrier" : "Mod");
+    g.drawFittedText(role, header.removeFromLeft(64), juce::Justification::centredLeft, 1, 1.0f);
 
     auto graph = graphArea().toFloat();
     if (graph.isEmpty())
@@ -231,7 +232,7 @@ void OperatorPanel::paint(juce::Graphics& g)
 void OperatorPanel::drawWave(juce::Graphics& g, juce::Rectangle<float> r) const
 {
     g.setColour(colours::background);
-    g.fillRoundedRectangle(r, shape::r(3.0f));
+    g.fillRoundedRectangle(r, shape::r(radius::data));
     const int wave = juce::jlimit(0, 15, waveBox.getSelectedId() - 1);
     const auto inner = r.reduced(3.0f, 4.0f);
     g.setColour(colours::outline);
@@ -242,14 +243,14 @@ void OperatorPanel::drawWave(juce::Graphics& g, juce::Rectangle<float> r) const
         const float y = inner.getCentreY() - inner.getHeight() * 0.5f * hs816::tables::kWaves[wave][i] / 128.0f;
         if (i == 0) path.startNewSubPath(x, y); else path.lineTo(x, y);
     }
-    g.setColour((carrier ? colours::carrier : colours::modulator).withAlpha(isEnabled() ? 1.0f : 0.4f));
+    g.setColour((carrier ? colours::carrier : colours::modulator).withAlpha(isEnabled() ? 1.0f : alpha::disabled));
     g.strokePath(path, juce::PathStrokeType(1.3f));
 }
 
 void OperatorPanel::drawEnvelope(juce::Graphics& g, juce::Rectangle<float> r) const
 {
     g.setColour(colours::background);
-    g.fillRoundedRectangle(r, shape::r(3.0f));
+    g.fillRoundedRectangle(r, shape::r(radius::data));
     const int a = static_cast<int>(attack.slider.getValue());
     const int d = static_cast<int>(decay.slider.getValue());
     const int s = static_cast<int>(sustain.slider.getValue());
@@ -291,7 +292,7 @@ void OperatorPanel::drawEnvelope(juce::Graphics& g, juce::Rectangle<float> r) co
     if (rl == 0)
         path.lineTo(x, inner.getBottom());
 
-    const auto c = (carrier ? colours::carrier : colours::modulator).withAlpha(isEnabled() ? 1.0f : 0.4f);
+    const auto c = (carrier ? colours::carrier : colours::modulator).withAlpha(isEnabled() ? 1.0f : alpha::disabled);
     juce::Path fill(path);
     fill.lineTo(path.getCurrentPosition().x, inner.getBottom());
     fill.closeSubPath();
@@ -302,9 +303,13 @@ void OperatorPanel::drawEnvelope(juce::Graphics& g, juce::Rectangle<float> r) co
 
     g.setColour(colours::textDim);
     g.setFont(font(type::caption));
-    g.drawFittedText("A " + formatSeconds(attackSeconds(a)) + "  D " + formatSeconds(decaySeconds(d))
-                   + "  R " + formatSeconds(releaseSeconds(rl)),
-               r.reduced(4.0f, 1.0f).toNearestInt(), juce::Justification::topRight, 1, 0.7f);
+    // 文字は縮めず、幅が足りないときは短い書き方にする
+    const auto times = r.reduced(4.0f, 1.0f).toNearestInt();
+    const auto as = formatSeconds(attackSeconds(a)), ds = formatSeconds(decaySeconds(d)), rs = formatSeconds(releaseSeconds(rl));
+    const juce::String labelled = "A " + as + "  D " + ds + "  R " + rs, bare = as + " " + ds + " " + rs;
+    const auto fits = [&](const juce::String& s) { return juce::GlyphArrangement::getStringWidthInt(g.getCurrentFont(), s) <= times.getWidth(); };
+    if (fits(labelled) || fits(bare))
+        g.drawText(fits(labelled) ? labelled : bare, times, juce::Justification::topRight, false);
 }
 
 void OperatorPanel::resized()
@@ -378,24 +383,16 @@ PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p), dr
     revertButton.onClick = [this] {
         const auto location = processor.getChannelPatchLocation(channel);
         const auto name = juce::String(location.bank) + ":" + juce::String(location.program + 1).paddedLeft('0', 3);
-        const juce::Component::SafePointer<PatchEditorPanel> safe(this);
         const int ch = channel;
-        juce::AlertWindow::showAsync(
-            juce::MessageBoxOptions()
-                .withIconType(juce::MessageBoxIconType::WarningIcon)
-                .withTitle("Revert patch " + name + "?")
-                .withMessage("Your edits to this patch are discarded and it goes back to the JSON file. "
-                             "Notes that are sounding change at once.")
-                .withButton("Revert")
-                .withButton("Cancel")
-                .withAssociatedComponent(this),
-            [safe, ch](int result) {
-                if (safe == nullptr || result != 1)
-                    return;
-                safe->processor.revertChannelPatch(ch);
-                safe->loadedRevision = ~0u;
-                safe->refresh();
-            });
+        showConfirm(*this, "Revert patch " + name + "?",
+                    "Your edits to this patch are discarded and it goes back to the JSON file. "
+                    "Notes that are sounding change at once.",
+                    "Revert",
+                    [this, ch] {
+                        processor.revertChannelPatch(ch);
+                        loadedRevision = ~0u;
+                        refresh();
+                    });
     };
     addAndMakeVisible(revertButton);
 
@@ -411,7 +408,7 @@ PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p), dr
         e.setInputRestrictions(3, "0123456789");
         e.setSelectAllWhenFocused(true);
         e.setJustification(juce::Justification::centred);
-        e.setFont(monoFont(type::title));
+        setEditorFont(e, type::title);
         e.setTooltip(tip + " Enter sends Bank Select + Program Change on this channel.");
         e.onReturnKey = [this] { commitProgramEdit(); };
         e.onFocusLost = [this] { if (!bankEdit.hasKeyboardFocus(true) && !patchEdit.hasKeyboardFocus(true)) updateStatus(); };
@@ -421,14 +418,13 @@ PatchEditorPanel::PatchEditorPanel(_3HSPlugAudioProcessor& p) : processor(p), dr
     setupProgramEdit(bankEdit, "Bank (0-127).");
     setupProgramEdit(patchEdit, "Patch (1-128).");
     for (auto* cap : { &bankCaption, &patchCaption }) {
-        setLabelFont(*cap, type::small, true);
-        cap->setColour(juce::Label::textColourId, colours::textDim);
+        setLabelFont(*cap, type::caption, true, false, true);
         cap->setJustificationType(juce::Justification::centred);
         cap->setInterceptsMouseClicks(false, false);
         addAndMakeVisible(*cap);
     }
-    bankCaption.setText("BANK", juce::dontSendNotification);
-    patchCaption.setText("PATCH", juce::dontSendNotification);
+    bankCaption.setText("Bank", juce::dontSendNotification);
+    patchCaption.setText("Patch", juce::dontSendNotification);
     setLabelFont(colonLabel, type::title, true);
     colonLabel.setText(":", juce::dontSendNotification);
     colonLabel.setJustificationType(juce::Justification::centred);
@@ -578,10 +574,10 @@ void PatchEditorPanel::updateStatus()
     } else if (location.availability == 1) {
         status = "Not in bank " + juce::String(location.bank) + "; using bank 0. Editing creates it in bank "
                  + juce::String(location.bank) + ".";
-        colour = colours::meterYellow;
+        colour = colours::warning;
     } else {
         status = "Undefined program; using the default patch. Editing creates it.";
-        colour = colours::meterRed;
+        colour = colours::error;
     }
     statusLabel.setText(status, juce::dontSendNotification);
     statusLabel.setColour(juce::Label::textColourId, colour);
@@ -620,8 +616,10 @@ void PatchEditorPanel::paint(juce::Graphics& g)
 
 void PatchEditorPanel::resized()
 {
+    // ドラムでも上の段（チャンネルとバンク、キットの名前）は残るので、その下に置く
     drumKit.setBounds(getLocalBounds().withTrimmedTop(space::sectionHeader).reduced(space::sm, 2)
-                          .withTrimmedTop(space::control + space::sm).withTrimmedBottom(space::sm));
+                          .withTrimmedTop(kCaptionHeight + space::control + space::xs + kNameHeight + space::sm)
+                          .withTrimmedBottom(space::sm));
 
     // 左: チャンネルと名前 / 状態 / Revert・Save、中: アルゴリズムとフィードバック、右: 経路図
     auto global = globalArea();
@@ -638,7 +636,7 @@ void PatchEditorPanel::resized()
     patchEdit.setBounds(top.removeFromLeft(56));
     patchCaption.setBounds(caption.removeFromLeft(56));
     left.removeFromTop(space::xs);
-    programLabel.setBounds(left.removeFromTop(20));
+    programLabel.setBounds(left.removeFromTop(kNameHeight));
     auto buttons = left.removeFromBottom(space::control);
     revertButton.setBounds(buttons.removeFromLeft(96));
     buttons.removeFromLeft(space::sm);
@@ -651,20 +649,21 @@ void PatchEditorPanel::resized()
     combos.removeFromTop(space::xs);
     fbDestBox.setBounds(combos.removeFromTop(space::control));
     global.removeFromLeft(space::sm);
-    auto knobs = global.removeFromLeft(128).withTrimmedBottom(space::control + space::xs);
-    feedback.setBounds(knobs.removeFromLeft(64));
-    keyShift.setBounds(knobs.removeFromLeft(64));
+    auto knobs = global.removeFromLeft(144).withTrimmedBottom(space::control + space::xs);
+    feedback.setBounds(knobs.removeFromLeft(72));
+    keyShift.setBounds(knobs.removeFromLeft(72));
     global.removeFromLeft(space::md);
     diagram.setBounds(global);
 
     auto ops = operatorsArea();
     const int cols = 4;
     const int gap = kOpGap;
+    const int rowGap = ops.getHeight() < kCompactOpsHeight ? space::sm : gap; // 低い画面ではノブに高さを回す
     const int w = (ops.getWidth() - gap * (cols - 1)) / cols;
-    const int h = (ops.getHeight() - gap) / 2;
+    const int h = (ops.getHeight() - rowGap) / 2;
     for (int i = 0; i < 8; ++i) {
         const int c = i % cols, r = i / cols;
-        operators[static_cast<size_t>(i)]->setBounds(ops.getX() + c * (w + gap), ops.getY() + r * (h + gap), w, h);
+        operators[static_cast<size_t>(i)]->setBounds(ops.getX() + c * (w + gap), ops.getY() + r * (h + rowGap), w, h);
     }
 }
 

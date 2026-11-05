@@ -33,6 +33,8 @@ public:
     void update();
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
+    void mouseMove(const juce::MouseEvent&) override;
+    void mouseExit(const juce::MouseEvent&) override;
     bool keyPressed(const juce::KeyPress&) override;
     void focusGained(FocusChangeType) override;
     void focusLost(FocusChangeType) override;
@@ -46,6 +48,7 @@ private:
 
     _3HSPlugAudioProcessor& processor;
     int selectedChannel = 1;
+    int hoverChannel = 0; // update() が毎フレーム描き直す
     float levels[16] {};
     bool gsDots[16][16] {};
     juce::String gsText;
@@ -153,6 +156,7 @@ public:
     void paint(juce::Graphics&) override;
     void mouseDown(const juce::MouseEvent&) override;
     void refresh(); // 対象が動いたり隠れたりしたときのためにタイマーから呼ぶ
+    std::function<void(juce::Component*)> onKeyboardFocus; // リングの対象が変わった（なければ nullptr）
 
 private:
     void globalFocusChanged(juce::Component* focused) override;

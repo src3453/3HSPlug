@@ -22,9 +22,9 @@ void drawKeyboard(juce::Graphics& g, juce::Rectangle<int> bounds,
             const float x = bounds.getX() + (black ? white - 0.32f : static_cast<float>(white)) * keyWidth;
             if (black == (pass == 1)) {
                 juce::Rectangle<float> key(x, top, keyWidth * (black ? 0.64f : 1.0f), height * (black ? 0.62f : 1.0f));
-                g.setColour(notes[static_cast<size_t>(n)] != 0 ? colour : (black ? juce::Colour(0xff20232a) : juce::Colour(0xffe4e7ec)));
+                g.setColour(notes[static_cast<size_t>(n)] != 0 ? colour : (black ? colours::keyBlack : colours::keyWhite));
                 g.fillRect(key);
-                g.setColour(juce::Colour(0xff555963));
+                g.setColour(colours::fieldEdge);
                 g.drawRect(key, 0.5f);
             }
             if (!black) ++white;
@@ -35,7 +35,7 @@ void drawKeyboard(juce::Graphics& g, juce::Rectangle<int> bounds,
 
 juce::Rectangle<int> ChannelStatusPanel::rowsArea() const
 {
-    return getLocalBounds().reduced(8).withTrimmedTop(48).withTrimmedBottom(24);
+    return getLocalBounds().reduced(space::sm).withTrimmedTop(2 * space::sectionHeader).withTrimmedBottom(space::sectionHeader);
 }
 
 void ChannelStatusPanel::update()
@@ -46,14 +46,14 @@ void ChannelStatusPanel::update()
 void ChannelStatusPanel::paint(juce::Graphics& g)
 {
     drawSection(g, getLocalBounds(), "MIDI channel status");
-    auto header = getLocalBounds().reduced(8).withTrimmedTop(24).removeFromTop(24);
+    auto header = getLocalBounds().reduced(space::sm).withTrimmedTop(space::sectionHeader).removeFromTop(space::sectionHeader);
     g.setFont(font(type::caption, true));
     g.setColour(colours::textDim);
     g.drawText("CH", header.removeFromLeft(channelWidth), juce::Justification::centred);
-    g.drawText("PROGRAM / BANK MSB : LSB", header.removeFromLeft(patchWidth), juce::Justification::centredLeft);
+    g.drawText("Program / Bank MSB : LSB", header.removeFromLeft(patchWidth), juce::Justification::centredLeft);
     for (int i = 0; i < 12; ++i)
         g.drawText(labels[i], header.removeFromLeft(cellWidth(i)), juce::Justification::centred);
-    g.drawText("NOTES  C-1 ... G9", header, juce::Justification::centred);
+    g.drawText("Notes  C-1 ... G9", header, juce::Justification::centred);
 
     const auto rows = rowsArea();
     for (int i = 0; i < 16; ++i) {
@@ -61,13 +61,21 @@ void ChannelStatusPanel::paint(juce::Graphics& g)
         const int y = rows.getY() + rows.getHeight() * i / 16;
         auto row = juce::Rectangle<int>(rows.getX(), y, rows.getWidth(), rows.getY() + rows.getHeight() * (i + 1) / 16 - y);
         const auto colour = colours::forChannel(i);
-        g.setColour(selectedChannel == i + 1 ? colours::accent.withAlpha(0.13f) : (i % 2 == 0 ? colours::panelRaised : colours::panel));
-        g.fillRect(row);
         if (selectedChannel == i + 1) {
-            g.setColour(colours::accent);
-            g.drawRect(row, 1);
+            drawSelection(g, row.toFloat());
+            if (showFocusRing)
+                drawFocusRing(g, row.toFloat());
+        } else {
+            if (i % 2 == 0) {
+                g.setColour(colours::panelRaised);
+                g.fillRect(row);
+            }
+            if (hoverChannel == i + 1) {
+                g.setColour(colours::fieldEdge);
+                g.drawRoundedRectangle(row.toFloat().reduced(0.5f), shape::r(radius::control), stroke::hairline);
+            }
         }
-        auto content = row.reduced(0, 4);
+        auto content = row.reduced(0, space::xs);
         g.setFont(monoFont(type::body));
         g.setColour(colour);
         g.drawText(juce::String(i + 1).paddedLeft('0', 2), content.removeFromLeft(channelWidth), juce::Justification::centred);
@@ -97,12 +105,13 @@ void ChannelStatusPanel::paint(juce::Graphics& g)
             g.setFont(monoFont(type::caption));
             g.drawText(juce::String(value), cell, juce::Justification::centred);
         }
-        drawKeyboard(g, content.reduced(5, 2), s.notes, colour);
+        // 単色のテーマでは濃淡が鍵盤に埋もれるので、発音中のノートはアクセントで示す
+        drawKeyboard(g, content.reduced(5, 2), s.notes, shape::monochromeChannels ? colours::accent : colour);
     }
     g.setColour(colours::textDim);
     g.setFont(font(type::caption));
-    g.drawText("Keys: MIDI note / sustain state   |   CC values: received values   |   Double-click / Enter: edit channel",
-               getLocalBounds().reduced(12, 4).removeFromBottom(20), juce::Justification::centredLeft);
+    g.drawText("Keys show MIDI notes and sustain. CC values are as received. Double-click or press Enter to edit a channel.",
+               getLocalBounds().reduced(space::md, space::xs).removeFromBottom(20), juce::Justification::centredLeft);
 }
 
 int ChannelStatusPanel::channelAt(juce::Point<int> p) const
@@ -116,9 +125,35 @@ void ChannelStatusPanel::choose(int ch)
     if (onChannelSelected) onChannelSelected(ch);
     repaint();
 }
+void ChannelStatusPanel::focusGained(FocusChangeType cause)
+{
+    showFocusRing = cause != focusChangedByMouseClick;
+    repaint();
+}
+void ChannelStatusPanel::focusLost(FocusChangeType)
+{
+    showFocusRing = false;
+    repaint();
+}
 void ChannelStatusPanel::mouseDown(const juce::MouseEvent& e)
 {
+    showFocusRing = false;
     if (const int ch = channelAt(e.getPosition()); ch != 0) choose(ch);
+}
+void ChannelStatusPanel::mouseMove(const juce::MouseEvent& e)
+{
+    setHoverChannel(channelAt(e.getPosition()));
+}
+void ChannelStatusPanel::mouseExit(const juce::MouseEvent&)
+{
+    setHoverChannel(0);
+}
+void ChannelStatusPanel::setHoverChannel(int ch)
+{
+    if (ch != hoverChannel) {
+        hoverChannel = ch;
+        repaint();
+    }
 }
 void ChannelStatusPanel::mouseDoubleClick(const juce::MouseEvent& e)
 {
@@ -135,6 +170,8 @@ bool ChannelStatusPanel::keyPressed(const juce::KeyPress& key)
     else if (key == juce::KeyPress::endKey) choose(16);
     else if (key == juce::KeyPress::returnKey) { if (onEditChannel) onEditChannel(selectedChannel); }
     else return false;
+    showFocusRing = true;
+    repaint();
     return true;
 }
 } // namespace ui
