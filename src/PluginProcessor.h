@@ -54,6 +54,12 @@ class _3HSPlugAudioProcessor  : public juce::AudioProcessor
     // DCオフセット除去用ハイパスフィルタ（チャンネルごと）
     std::vector<juce::IIRFilter> dcHighPassFilters;
 public:
+    // 出力段のDCオフセット除去ハイパスの係数（スコープのDC除去でも共用）
+    static constexpr double dcHighPassCutoffHz = 20.0;
+    static juce::IIRCoefficients makeDcHighPassCoefficients(double sampleRate)
+    {
+        return juce::IIRCoefficients::makeHighPass(sampleRate, dcHighPassCutoffHz);
+    }
     DrumKeymapManager drumKeymapManager;
     int drumPcmChannelIndex = 0; // 4ボイス用ラウンドロビンインデックス
     
