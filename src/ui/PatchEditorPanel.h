@@ -95,8 +95,9 @@ private:
     Knob keyShift { "Key shift" };
     juce::TextButton revertButton { "Revert" };
     juce::TextButton saveButton { "Save Bank" };
-    juce::TextEditor programEdit; // "バンク:パッチ"。確定でバンクセレクト+プログラムチェンジを送る
-    juce::Label programLabel;   // GM音色名
+    juce::TextEditor bankEdit;  // バンク(0～127)。確定でバンクセレクト+プログラムチェンジを送る
+    juce::TextEditor patchEdit; // パッチ(1～128)
+    juce::Label programLabel;   // GM音色名（入力欄の下）
     juce::Label statusLabel;
     DrumKitPanel drumKit;
     juce::String saveMessage;
