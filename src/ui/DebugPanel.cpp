@@ -86,6 +86,20 @@ DebugPanel::DebugPanel(_3HSPlugAudioProcessor& p) : processor(p)
     viewport.setViewedComponent(&grid, false);
     viewport.setScrollBarsShown(true, false);
     addAndMakeVisible(viewport);
+
+    logLabel.setText("Log", juce::dontSendNotification);
+    setLabelFont(logLabel, type::body);
+    addAndMakeVisible(logLabel);
+    clearLogButton.onClick = [this] {
+        dbglog::Log::instance().clear();
+        logView.clear();
+    };
+    addAndMakeVisible(clearLogButton);
+    logView.setMultiLine(true, false);
+    logView.setReadOnly(true);
+    logView.setScrollbarsShown(true);
+    logView.setFont(juce::FontOptions(juce::Font::getDefaultMonospacedFontName(), 12.0f, juce::Font::plain));
+    addAndMakeVisible(logView);
 }
 
 void DebugPanel::paint(juce::Graphics& g)
@@ -100,13 +114,37 @@ void DebugPanel::resized()
     chipLabel.setBounds(row.removeFromLeft(200));
     chipBox.setBounds(row.removeFromLeft(120));
     area.removeFromTop(space::sm);
+    auto logArea = area.removeFromBottom(juce::jmax(80, area.getHeight() / 3));
     viewport.setBounds(area);
+    auto logRow = logArea.removeFromTop(space::control);
+    logLabel.setBounds(logRow.removeFromLeft(100));
+    clearLogButton.setBounds(logRow.removeFromLeft(80));
+    logView.setBounds(logArea);
     grid.setSize(juce::jmax(area.getWidth() - viewport.getScrollBarThickness(),
                             space::sm + addrW + nameW + 60 + 16 * cellW), grid.getHeight());
 }
 
+void DebugPanel::updateLog()
+{
+    const auto entries = dbglog::Log::instance().getEntriesAfter(lastLogId);
+    if (entries.empty()) return;
+    const bool atEnd = logView.getCaretPosition() >= logView.getTotalNumChars();
+    juce::String chunk;
+    for (const auto& e : entries) {
+        chunk << e.text << '\n';
+        lastLogId = e.id;
+    }
+    logView.moveCaretToEnd();
+    logView.insertTextAtCaret(chunk);
+    if (logView.getTotalNumChars() > 200000)
+        logView.setText(logView.getText().substring(100000), false);
+    juce::ignoreUnused(atEnd);
+    logView.moveCaretToEnd();
+}
+
 void DebugPanel::update()
 {
+    updateLog();
     const int chips = processor.getNumChips();
     if (chips != shownChips) {
         const int selected = chipBox.getSelectedId();
