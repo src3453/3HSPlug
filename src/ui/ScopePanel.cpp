@@ -10,6 +10,7 @@ constexpr int headerHeight = 36;
 constexpr int fpsChoices[] { 10, 15, 20, 30, 60, 120 };
 constexpr const char* kFpsKey = "scopeFps";
 constexpr const char* kColourKey = "scopeColourMode"; // 1 = 白, 2 = ボイスごと, 3 = MIDIチャンネルごと
+constexpr const char* kViewKey = "scopeViewMode"; // 1 = ボイスごと, 2 = MIDIチャンネルごと(ミックス)
 constexpr const char* kDcKey = "scopeDcRemoval"; // 0 = なし, 1 = 平均値ベース
 
 // 1ピクセルを書く（範囲外は無視）。コンポーネントの背景は透明なので、不透明な色をそのまま書き込む。
@@ -87,6 +88,22 @@ ScopePanel::ScopePanel(_3HSPlugAudioProcessor& p) : processor(p)
     setupLabel(fpsLabel, "FPS");
     setupLabel(dcLabel, "DC");
     setupLabel(colourLabel, "Colour");
+    setupLabel(viewLabel, "View");
+
+    addAndMakeVisible(viewBox);
+    viewBox.addItem("Voice", 1);
+    viewBox.addItem("MIDI channel", 2);
+    viewMode = static_cast<ViewMode>(juce::jlimit(1, 2, ui::userSettings().getIntValue(kViewKey, 1)));
+    viewBox.setSelectedId(static_cast<int>(viewMode), juce::dontSendNotification);
+    viewBox.onChange = [this] {
+        viewMode = static_cast<ViewMode>(juce::jlimit(1, 2, viewBox.getSelectedId()));
+        ui::userSettings().setValue(kViewKey, static_cast<int>(viewMode));
+        ui::userSettings().saveIfNeeded();
+        for (auto& c : cells) { c.valid = false; c.autoPeak = 0.05f; }
+        if (wasShowing) updateRange(true);
+        resized();
+        repaint();
+    };
 
     addAndMakeVisible(colourBox);
     colourBox.addItem("White", 1);
@@ -135,6 +152,7 @@ ScopePanel::~ScopePanel()
 {
     stopTimer();
     processor.setScopeRange(0, 0);
+    processor.setScopeMidiMix(false);
 }
 
 int ScopePanel::numPages() const
@@ -154,14 +172,18 @@ void ScopePanel::setPage(int newPage)
 
 void ScopePanel::updateRange(bool showing)
 {
-    processor.setScopeRange(page * pageSize, showing ? pageSize : 0);
+    processor.setScopeMidiMix(midiMode());
+    if (midiMode())
+        processor.setScopeRange(0, showing ? midiCells : 0);
+    else
+        processor.setScopeRange(page * pageSize, showing ? pageSize : 0);
 }
 
 void ScopePanel::resized()
 {
     auto area = getLocalBounds().reduced(space::sm);
     auto bar = area.removeFromTop(headerHeight - space::sm);
-    auto right = bar.removeFromRight(620);
+    auto right = bar.removeFromRight(720);
     auto place = [&right](juce::Label& l, juce::ComboBox& b, int boxW) {
         b.setBounds(right.removeFromRight(boxW).reduced(0, 2));
         l.setBounds(right.removeFromRight(juce::jmax(40, l.getFont().getStringWidth(l.getText()) + 8)));
@@ -170,9 +192,11 @@ void ScopePanel::resized()
     place(dcLabel, dcBox, 80);
     place(fpsLabel, fpsBox, 70);
     place(gainLabel, gainBox, 90);
+    place(viewLabel, viewBox, 130);
     prevButton.setBounds(bar.removeFromLeft(36).reduced(0, 2));
-    pageLabel.setBounds(bar.removeFromLeft(210));
+    pageLabel.setBounds(bar.removeFromLeft(190));
     nextButton.setBounds(bar.removeFromLeft(36).reduced(0, 2));
+    for (auto* b : { &prevButton, &nextButton }) b->setVisible(!midiMode());
 }
 
 juce::Rectangle<int> ScopePanel::gridArea() const
@@ -206,7 +230,7 @@ juce::Colour ScopePanel::cellColour(int cellIndex) const
     switch (colourMode) {
         case ColourMode::voice: return colours::forChannel(cellIndex % 16);
         case ColourMode::midiChannel: {
-            const int midiCh = midiChannelFor(page * pageSize + cellIndex);
+            const int midiCh = midiMode() ? cellIndex + 1 : midiChannelFor(page * pageSize + cellIndex);
             return midiCh > 0 ? colours::forChannel(midiCh - 1) : colours::textDim; // 未使用は灰色
         }
         case ColourMode::white: break;
@@ -214,19 +238,25 @@ juce::Colour ScopePanel::cellColour(int cellIndex) const
     return juce::Colours::white;
 }
 
+juce::String ScopePanel::midiChannelSubtitle(int midiCh) const
+{
+    if (processor.isDrumChannel(midiCh)) return "Drum kit";
+    return juce::MidiMessage::getGMInstrumentName(processor.getCurrentProgramForChannel(midiCh));
+}
+
 juce::String ScopePanel::channelSubtitle(int flat) const
 {
     const int midiCh = midiChannelFor(flat);
     if (midiCh == 0) return "--";
     const auto num = juce::String(midiCh).paddedLeft('0', 2);
-    if (processor.isDrumChannel(midiCh)) return "CH" + num + " Drum kit";
-    return "CH" + num + " " + juce::MidiMessage::getGMInstrumentName(processor.getCurrentProgramForChannel(midiCh));
+    return "CH" + num + " " + midiChannelSubtitle(midiCh);
 }
 
 // メッセージスレッド: 表示中ページの波形を取得してトリガーをかける。変化があれば再描画する
 void ScopePanel::timerCallback()
 {
     const bool showing = isShowing();
+    const int nCells = cellCount();
     if (showing != wasShowing) {
         wasShowing = showing;
         updateRange(showing);
@@ -235,16 +265,17 @@ void ScopePanel::timerCallback()
     if (!showing) return;
 
     if (page >= numPages()) setPage(numPages() - 1);
-    const auto text = "Chip " + juce::String(page + 1) + " / " + juce::String(numPages())
-                      + "   (ch " + juce::String(page * pageSize + 1) + "-" + juce::String(page * pageSize + pageSize) + ")";
+    const auto text = midiMode() ? juce::String("MIDI channels 1-16 (mixed)")
+                                 : "Chip " + juce::String(page + 1) + " / " + juce::String(numPages())
+                                       + "   (ch " + juce::String(page * pageSize + 1) + "-" + juce::String(page * pageSize + pageSize) + ")";
     if (pageLabel.getText() != text) pageLabel.setText(text, juce::dontSendNotification);
     prevButton.setEnabled(page > 0);
     nextButton.setEnabled(page < numPages() - 1);
 
     bool changed = false;
-    for (int i = 0; i < pageSize; ++i) {
+    for (int i = 0; i < nCells; ++i) {
         auto& c = cells[static_cast<size_t>(i)];
-        const bool ok = processor.readScopeWindow(page * pageSize + i, c.raw.data(), captureSamples);
+        const bool ok = processor.readScopeWindow(midiMode() ? i : page * pageSize + i, c.raw.data(), captureSamples);
         if (!ok) {
             if (c.valid) { c.valid = false; changed = true; }
             continue;
@@ -276,14 +307,15 @@ void ScopePanel::renderWaveforms(juce::Rectangle<int> px, float scale)
     else
         image.clear(image.getBounds());
 
-    const int cw = px.getWidth() / columns, ch = px.getHeight() / rows;
+    const int cols = columns(), nRows = rows();
+    const int cw = px.getWidth() / cols, ch = px.getHeight() / nRows;
     const int thickness = scale >= 1.75f ? 2 : 1;
     Canvas canvas { juce::Image::BitmapData(image, juce::Image::BitmapData::readWrite), px.getWidth(), px.getHeight(), {} };
 
-    for (int i = 0; i < pageSize; ++i) {
+    for (int i = 0; i < cellCount(); ++i) {
         auto& cell = cells[static_cast<size_t>(i)];
         if (!cell.valid || cell.shownCount < 2) continue;
-        const int col = i % columns, row = i / columns;
+        const int col = i % cols, row = i / cols;
         const int x0 = col * cw, y0 = row * ch;
         const float centre = static_cast<float>(y0) + ch * 0.5f;
 
@@ -317,7 +349,8 @@ void ScopePanel::paint(juce::Graphics& g)
     g.setColour(juce::Colours::black);
     g.fillRect(grid);
 
-    for (int i = 0; i < pageSize; ++i) cellColours[static_cast<size_t>(i)] = cellColour(i);
+    const int nCells = cellCount(), cols = columns(), nRows = rows();
+    for (int i = 0; i < nCells; ++i) cellColours[static_cast<size_t>(i)] = cellColour(i);
 
     // 物理ピクセル解像度でラスタライズして、そのまま1回で転送する
     const float scale = juce::jmax(1.0f, g.getInternalContext().getPhysicalPixelScaleFactor());
@@ -328,24 +361,25 @@ void ScopePanel::paint(juce::Graphics& g)
     }
 
     // グリッド線とラベル
-    const float cw = grid.getWidth() / static_cast<float>(columns), chh = grid.getHeight() / static_cast<float>(rows);
+    const float cw = grid.getWidth() / static_cast<float>(cols), chh = grid.getHeight() / static_cast<float>(nRows);
     g.setColour(colours::outline);
-    for (int c = 1; c < columns; ++c)
+    for (int c = 1; c < cols; ++c)
         g.drawVerticalLine(grid.getX() + juce::roundToInt(c * cw), static_cast<float>(grid.getY()), static_cast<float>(grid.getBottom()));
-    for (int r = 1; r < rows; ++r)
+    for (int r = 1; r < nRows; ++r)
         g.drawHorizontalLine(grid.getY() + juce::roundToInt(r * chh), static_cast<float>(grid.getX()), static_cast<float>(grid.getRight()));
     g.drawRect(grid, 1);
 
-    for (int i = 0; i < pageSize; ++i) {
+    for (int i = 0; i < nCells; ++i) {
         const int flat = page * pageSize + i;
-        const juce::Rectangle<float> cell(grid.getX() + (i % columns) * cw, grid.getY() + (i / columns) * chh, cw, chh);
+        const juce::Rectangle<float> cell(grid.getX() + (i % cols) * cw, grid.getY() + (i / cols) * chh, cw, chh);
         const auto colour = cellColours[static_cast<size_t>(i)];
         g.setColour(colour);
         g.setFont(monoFont(type::body));
-        g.drawText(channelTitle(flat), cell.reduced(6, 3).removeFromTop(17), juce::Justification::topLeft, false);
+        g.drawText(midiMode() ? "CH" + juce::String(i + 1).paddedLeft('0', 2) : channelTitle(flat),
+                   cell.reduced(6, 3).removeFromTop(17), juce::Justification::topLeft, false);
         g.setFont(monoFont(type::caption));
         g.setColour(colour.withAlpha(0.85f));
-        g.drawText(channelSubtitle(flat), cell.reduced(6, 3).withTrimmedTop(17).removeFromTop(14), juce::Justification::topLeft, true);
+        g.drawText(midiMode() ? midiChannelSubtitle(i + 1) : channelSubtitle(flat), cell.reduced(6, 3).withTrimmedTop(17).removeFromTop(14), juce::Justification::topLeft, true);
     }
 }
 } // namespace ui
