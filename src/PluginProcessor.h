@@ -190,6 +190,10 @@ public:
     static constexpr int scopeMaxChannels = 16 * scopeChannelsPerChip;
     // 取得対象を [first, first+count) にする。count=0 で取得停止（メッセージスレッドから呼ぶ）
     void setScopeRange(int first, int count) noexcept;
+    // MIDIチャンネル別ミックスモード: true なら、取得対象はフラット番号 0..15 =
+    // MIDIチャンネル1..16 の合成出力（各ボイスを現在割り当てられているMIDIチャンネルへ加算）。
+    // setScopeRange より前に呼ぶこと。このモードでは範囲は [0, count) のみ使う。
+    void setScopeMidiMix(bool enabled) noexcept;
     // 直近 count サンプルを dest へコピーする（古い順、-1..1 に正規化済み）。
     // 取得開始後にまだ count サンプル溜まっていなければ false。
     bool readScopeWindow(int flatChannel, float* dest, int count) const noexcept;
@@ -275,7 +279,9 @@ private:
     std::array<std::atomic<uint32_t>, scopeMaxChannels> scopeWritePos {};
     std::array<std::atomic<uint32_t>, scopeMaxChannels> scopeFilled {}; // scopeRingSizeで飽和
     std::atomic<int> scopeFirst { 0 }, scopeCount { 0 };
+    std::atomic<bool> scopeMidiMix { false };
     int scopeAudioFirst = 0, scopeAudioCount = 0; // オーディオスレッド側の前回値
+    bool scopeAudioMidiMix = false;
     void captureScope(int chip, const std::vector<std::vector<std::vector<float>>>& frames, size_t length) noexcept;
 
     std::atomic<float>* masterVolumeParam = nullptr;
