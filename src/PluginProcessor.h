@@ -310,6 +310,8 @@ private:
     // PCMサンプルとパッチバンクJSONのディレクトリ
     std::string pcmPath = "./pcm/";
     std::string patchJsonPath = "patches/";
+    bool pcmPathSetByUser = false;       // GUIで設定された場合のみtrue（trueのときだけ状態に保存し、環境変数より優先）
+    bool patchJsonPathSetByUser = false;
 
     // パラメータ管理（最小限：音色/ボリューム/ADSR/ゲート）
     juce::AudioProcessorValueTreeState parameters;
