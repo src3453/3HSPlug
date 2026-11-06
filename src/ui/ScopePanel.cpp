@@ -1,6 +1,7 @@
 #include "ScopePanel.h"
 #include "ScopeTrigger.h"
 #include "UserSettings.h"
+#include <algorithm>
 #include <cstdlib>
 #include <cstring>
 #include <deque>
@@ -13,7 +14,8 @@ constexpr int fpsChoices[] { 10, 15, 20, 30, 60, 120 };
 constexpr const char* kFpsKey = "scopeFps";
 constexpr const char* kColourKey = "scopeColourMode"; // 1 = 単色（テーマの文字色）, 2 = ボイスごと, 3 = MIDIチャンネルごと
 constexpr const char* kViewKey = "scopeViewMode"; // 1 = ボイスごと, 2 = MIDIチャンネルごと(ミックス)
-constexpr const char* kDcKey = "scopeDcRemoval"; // 0 = なし, 1 = 平均値ベース, 2 = ハイパス
+constexpr const char* kDcKey = "scopeDcRemoval"; // 0 = なし, 1 = 平均値ベース, 2 = ハイパス, 3 = Max-Min
+constexpr const char* kDcSmoothKey = "scopeDcSmoothing"; // 0 = なし, 1 = 弱, 2 = 強
 constexpr const char* kGainKey = "scopeGainId"; // ComboBox の ID（1 = Auto, 2.. = x1, x2, ...）
 constexpr const char* kWindowKey = "scopeWindowMs"; // 表示窓の時間幅(ms)
 constexpr int windowChoices[] { 5, 10, 20, 40, 80 };
@@ -109,7 +111,7 @@ ScopePanel::ScopePanel(_3HSPlugAudioProcessor& p) : processor(p)
     pageLabel.setJustificationType(juce::Justification::centred);
 
     addAndMakeVisible(optionsButton);
-    optionsButton.setTooltip("Scope options (View, Window, Gain, FPS, DC removal, Colour)");
+    optionsButton.setTooltip("Scope options (View, Window, Gain, FPS, DC removal, DC smoothing, Colour)");
     optionsButton.setWantsKeyboardFocus(true);
     optionsButton.onClick = [this] { showOptionsMenu(); };
 
@@ -126,7 +128,8 @@ ScopePanel::ScopePanel(_3HSPlugAudioProcessor& p) : processor(p)
 
         viewMode = static_cast<ViewMode>(juce::jlimit(1, 2, s.getIntValue(kViewKey, 1)));
         colourMode = static_cast<ColourMode>(juce::jlimit(1, 3, s.getIntValue(kColourKey, 1)));
-        dcMode = static_cast<DcMode>(juce::jlimit(0, 2, s.getIntValue(kDcKey, 0)));
+        dcMode = static_cast<DcMode>(juce::jlimit(0, 3, s.getIntValue(kDcKey, 0)));
+        dcSmoothId = juce::jlimit(1, 3, s.getIntValue(kDcSmoothKey, 3));
 
         const int savedFps = s.getIntValue(kFpsKey, 30);
         fpsId = 4; // 30
@@ -223,6 +226,14 @@ void ScopePanel::setDcMode(DcMode m)
     ui::userSettings().saveIfNeeded();
 }
 
+void ScopePanel::setDcSmoothId(int id)
+{
+    dcSmoothId = juce::jlimit(1, 3, id);
+    for (auto& c : cells) c.dcSmoothedValid = false;
+    ui::userSettings().setValue(kDcSmoothKey, dcSmoothId);
+    ui::userSettings().saveIfNeeded();
+}
+
 // ページ切替は頻繁に触るのでヘッダーに残し、設定系の項目だけをOptionsパネルにまとめる。
 void ScopePanel::showOptionsMenu()
 {
@@ -239,8 +250,10 @@ void ScopePanel::showOptionsMenu()
     rows.push_back({ "Window", win, windowId, [s](int id) { if (s) s->setWindowId(id); } });
     rows.push_back({ "Gain", gain, gainId, [s](int id) { if (s) s->setGainId(id); } });
     rows.push_back({ "FPS", fps, fpsId, [s](int id) { if (s) s->setFpsId(id); } });
-    rows.push_back({ "DC removal", { "Off", "Mean", "High-pass" }, static_cast<int>(dcMode) + 1,
+    rows.push_back({ "DC removal", { "Off", "Mean", "High-pass", "Max-Min" }, static_cast<int>(dcMode) + 1,
         [s](int id) { if (s) s->setDcMode(static_cast<DcMode>(id - 1)); } });
+    rows.push_back({ "DC smoothing", { "Off", "Weak", "Strong" }, dcSmoothId,
+        [s](int id) { if (s) s->setDcSmoothId(id); } });
     rows.push_back({ "Colour", { "Single colour", "Per voice", "Per MIDI channel" }, static_cast<int>(colourMode),
         [s](int id) { if (s) s->setColourMode(static_cast<ColourMode>(id)); } });
 
@@ -353,12 +366,19 @@ void ScopePanel::timerCallback()
             if (c.valid) { c.valid = false; changed = true; }
             continue;
         }
-        if (dcMode == DcMode::mean) { // 平均値ベースのDC除去（トリガー判定にも効く）
-            double sum = 0.0;
-            for (int s = 0; s < capture; ++s) sum += c.raw[static_cast<size_t>(s)];
-            const float mean = static_cast<float>(sum / capture);
-            // 補正値（平均）をフレーム間で指数移動平均し、縦方向の揺れを抑える
-            c.dcSmoothed = c.dcSmoothedValid ? c.dcSmoothed + dcSmoothing * (mean - c.dcSmoothed) : mean;
+        if (dcMode == DcMode::mean || dcMode == DcMode::maxMin) { // 平均値/Max-MinベースのDC除去（トリガー判定にも効く）
+            float offset;
+            if (dcMode == DcMode::mean) {
+                double sum = 0.0;
+                for (int s = 0; s < capture; ++s) sum += c.raw[static_cast<size_t>(s)];
+                offset = static_cast<float>(sum / capture);
+            } else { // 最大値と最小値の平均
+                const auto mm = std::minmax_element(c.raw.begin(), c.raw.begin() + capture);
+                offset = (*mm.first + *mm.second) * 0.5f;
+            }
+            // 補正値をフレーム間で指数移動平均し、縦方向の揺れを抑える（Offなら平滑化なし）
+            const float alpha = dcSmoothId == 1 ? 1.0f : dcSmoothId == 2 ? 0.3f : 0.1f;
+            c.dcSmoothed = c.dcSmoothedValid ? c.dcSmoothed + alpha * (offset - c.dcSmoothed) : offset;
             c.dcSmoothedValid = true;
             for (int s = 0; s < capture; ++s) c.raw[static_cast<size_t>(s)] -= c.dcSmoothed;
         } else if (dcMode == DcMode::highPass) { // 出力段と同じハイパス（トリガー判定にも効く）
