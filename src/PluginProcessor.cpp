@@ -1897,8 +1897,11 @@ void _3HSPlugAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     }
     {
         juce::ScopedLock sl(processLock);
-        state.setProperty("pcmPath", juce::String(pcmPath), nullptr);
-        state.setProperty("patchJsonPath", juce::String(patchJsonPath), nullptr);
+        // GUIで明示的に設定したパスだけを保存する。未設定なら環境変数/既定値がそのまま使われる
+        if (pcmPathSetByUser)
+            state.setProperty("pcmPath", juce::String(pcmPath), nullptr);
+        if (patchJsonPathSetByUser)
+            state.setProperty("patchJsonPath", juce::String(patchJsonPath), nullptr);
         state.setProperty("numChips", numChips, nullptr);
         state.setProperty("allocationStrategy", allocationStrategy.load(), nullptr);
         state.setProperty("pcOverride", pcOverrideEnabled, nullptr);
@@ -2225,6 +2228,7 @@ void _3HSPlugAudioProcessor::setPcmPath(const std::string& path)
     const juce::ScopedLock kl(kitLock);
     {
         juce::ScopedLock sl(processLock);
+        pcmPathSetByUser = true; // GUI(または保存された状態)で設定された値は環境変数より優先する
         if (pcmPath == normalizedPath)
             return;
         pcmPath = normalizedPath;
@@ -2241,6 +2245,7 @@ void _3HSPlugAudioProcessor::setPatchJsonPath(const std::string& path)
         return;
 
     juce::ScopedLock sl(processLock);
+    patchJsonPathSetByUser = true; // GUI(または保存された状態)で設定された値は環境変数より優先する
     if (patchJsonPath == normalizedPath)
         return;
 

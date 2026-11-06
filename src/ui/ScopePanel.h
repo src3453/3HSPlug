@@ -43,7 +43,7 @@ private:
 
     enum class ViewMode { voice = 1, midiChannel };
     enum class ColourMode { single = 1, voice, midiChannel };
-    enum class DcMode { off = 0, mean = 1, highPass = 2 }; // 設定値と対応（旧: 0=なし,1=平均値）
+    enum class DcMode { off = 0, mean = 1, highPass = 2, maxMin = 3 }; // 設定値と対応（旧: 0=なし,1=平均値）
     _3HSPlugAudioProcessor& processor;
     juce::TextButton prevButton { "<" }, nextButton { ">" };
     juce::Label pageLabel;
@@ -56,6 +56,7 @@ private:
     void setColourMode(ColourMode m);
     void setFpsId(int id);
     void setDcMode(DcMode m);
+    void setDcSmoothId(int id);
     int gainId = 1;   // 1 = Auto, 2.. = x1, x2, ...
     int windowId = 3; // windowChoices の1始まり添字
     int fpsId = 4;    // fpsChoices の1始まり添字
@@ -65,8 +66,8 @@ private:
     ColourMode colourMode = ColourMode::single;
     std::array<juce::Colour, maxCells> cellColours;
     DcMode dcMode = DcMode::off;
-    // Mean用DC補正値のフレーム間平滑化（指数移動平均）。1.0で平滑化なし、小さいほど滑らか。
-    static constexpr float dcSmoothing = 0.1f;
+    // Mean/Max-Min用DC補正値のフレーム間平滑化（指数移動平均）。1=Off, 2=Weak(0.3), 3=Strong(0.1)
+    int dcSmoothId = 3;
 
     int page = 0;
     bool wasShowing = false;
@@ -79,7 +80,7 @@ private:
         int shownCount = 0;
         bool valid = false;
         juce::IIRFilter dcFilter; // High-pass用（チャンネルごと）
-        float dcSmoothed = 0.0f;  // Mean用に平滑化したDC補正値
+        float dcSmoothed = 0.0f;  // Mean/Max-Min用に平滑化したDC補正値
         bool dcSmoothedValid = false;
         float autoPeak = 0.05f;
     };
