@@ -503,7 +503,10 @@ SettingsOverlay::SettingsOverlay(_3HSPlugAudioProcessor& p) : processor(p)
     addAndMakeVisible(numChipsLabel);
     for (int i = 1; i <= 16; ++i)
         numChipsBox.addItem(juce::String(i) + (i == 1 ? " chip" : " chips") + "  (" + juce::String(i * 8) + " FM voices)", i);
-    numChipsBox.onChange = [this] { processor.setNumChips(numChipsBox.getSelectedId()); };
+    numChipsBox.onChange = [this] {
+        processor.setNumChips(numChipsBox.getSelectedId());
+        processor.updateHostDisplay(juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged(true));
+    };
 
     allocationLabel.setText("Voice allocation", juce::dontSendNotification);
     setLabelFont(allocationLabel, type::body);
@@ -512,7 +515,10 @@ SettingsOverlay::SettingsOverlay(_3HSPlugAudioProcessor& p) : processor(p)
     allocationBox.addItem("Lowest free voice first", 2);
     allocationBox.addItem("Least recently used", 3);
     allocationBox.setTooltip("How new notes are assigned to FM voices. Steals the oldest voice when all are in use.");
-    allocationBox.onChange = [this] { processor.setAllocationStrategy(allocationBox.getSelectedId() - 1); };
+    allocationBox.onChange = [this] {
+        processor.setAllocationStrategy(allocationBox.getSelectedId() - 1);
+        processor.updateHostDisplay(juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged(true));
+    };
     addAndMakeVisible(allocationBox);
 
     fontLabel.setText("UI font", juce::dontSendNotification);
