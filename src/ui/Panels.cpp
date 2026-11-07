@@ -577,19 +577,19 @@ SettingsOverlay::SettingsOverlay(_3HSPlugAudioProcessor& p) : processor(p)
     pcOverrideToggle.onClick = [this] { processor.setPcOverrideEnabled(pcOverrideToggle.getToggleState()); };
     addAndMakeVisible(pcOverrideToggle);
 
-    auto setupNumber = [this](juce::Slider& s, juce::Label& label, const juce::String& name, int maxValue) {
+    auto setupNumber = [this](juce::Slider& s, juce::Label& label, const juce::String& name, int minValue, int maxValue) {
         label.setText(name, juce::dontSendNotification);
         setLabelFont(label, type::body);
         addAndMakeVisible(label);
         s.setSliderStyle(juce::Slider::IncDecButtons);
         s.setTextBoxStyle(juce::Slider::TextBoxLeft, false, 50, space::control);
-        s.setRange(0, maxValue, 1);
+        s.setRange(minValue, maxValue, 1);
         addAndMakeVisible(s);
     };
-    setupNumber(pcBankSlider, pcBankLabel, "Bank", MAX_BANKS - 1);
-    setupNumber(pcProgramSlider, pcProgramLabel, "Program", PATCH_BANK_SIZE - 1);
+    setupNumber(pcBankSlider, pcBankLabel, "Bank", 0, MAX_BANKS - 1);
+    setupNumber(pcProgramSlider, pcProgramLabel, "Program", 1, PATCH_BANK_SIZE);   // 表示は1始まり、内部は0始まり
     pcBankSlider.onValueChange = [this] { processor.setPcOverrideBank(static_cast<int>(pcBankSlider.getValue())); };
-    pcProgramSlider.onValueChange = [this] { processor.setPcOverrideProgram(static_cast<int>(pcProgramSlider.getValue())); };
+    pcProgramSlider.onValueChange = [this] { processor.setPcOverrideProgram(static_cast<int>(pcProgramSlider.getValue()) - 1); };
 
     gmResetButton.setTooltip("Reset all MIDI channels and revert SysEx patch overrides");
     gmResetButton.onClick = [this] {
@@ -682,7 +682,7 @@ void SettingsOverlay::open()
     consoleLogToggle.setToggleState(consoleLogEnabled(), juce::dontSendNotification);
     pcOverrideToggle.setToggleState(processor.isPcOverrideEnabled(), juce::dontSendNotification);
     pcBankSlider.setValue(processor.getPcOverrideBank(), juce::dontSendNotification);
-    pcProgramSlider.setValue(processor.getPcOverrideProgram(), juce::dontSendNotification);
+    pcProgramSlider.setValue(processor.getPcOverrideProgram() + 1, juce::dontSendNotification);
     update();
     setVisible(true);
     toFront(true);

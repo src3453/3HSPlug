@@ -181,6 +181,16 @@ GM_INSTRUMENT_NAMES = {
     127: "Gunshot"
 }
 
+# JSON・MIDI・SysExのプログラム番号は0-127のまま扱い、画面上だけ1-128で表示する
+def program_to_display(program):
+    return program + 1
+
+def display_to_program(display):
+    return max(0, min(127, display - 1))
+
+def instrument_name(program):
+    return GM_INSTRUMENT_NAMES.get(program, f"Unknown ({program_to_display(program)})")
+
 """void setPatchOverride(int bankNumber, int patchNumber, int relativeAddr, int value) {
     if (bankNumber >= 0 && bankNumber < MAX_BANKS &&
         patchNumber >= 0 && patchNumber < PATCH_BANK_SIZE) {
@@ -386,22 +396,22 @@ class PatchEditor:
         # プログラム番号入力ダイアログ
         dialog = tk.Toplevel(self.root)
         dialog.title("Enter New Program Number")
-        tk.Label(dialog, text="New Program Number (0-127):").pack(padx=10, pady=5)
-        prog_var = tk.IntVar(value=patch.get("program", 0))
-        spin = ttk.Spinbox(dialog, from_=0, to=127, textvariable=prog_var, width=10)
+        tk.Label(dialog, text="New Program Number (1-128):").pack(padx=10, pady=5)
+        prog_var = tk.IntVar(value=program_to_display(patch.get("program", 0)))
+        spin = ttk.Spinbox(dialog, from_=1, to=128, textvariable=prog_var, width=10)
         spin.pack(padx=10, pady=5)
         def on_ok():
-            new_prog = prog_var.get()
+            new_prog = display_to_program(prog_var.get())
             # 既存番号チェック
             if any(p.get("program", -1) == new_prog for p in self.patch_data["patches"]):
-                messagebox.showerror("Error", f"Program number {new_prog} already exists")
+                messagebox.showerror("Error", f"Program number {program_to_display(new_prog)} already exists")
                 return
             new_patch = copy.deepcopy(patch)
             new_patch["program"] = new_prog
             self.patch_data["patches"].append(new_patch)
             self.update_patch_list()
             dialog.destroy()
-            messagebox.showinfo("Info", f"Patch duplicated to {new_prog}")
+            messagebox.showinfo("Info", f"Patch duplicated to {program_to_display(new_prog)}")
         ttk.Button(dialog, text="OK", command=on_ok).pack(side=tk.LEFT, padx=10, pady=10)
         ttk.Button(dialog, text="Cancel", command=dialog.destroy).pack(side=tk.RIGHT, padx=10, pady=10)
 
@@ -422,15 +432,15 @@ class PatchEditor:
                 # show dialog to ask for program number
                 dialog = tk.Toplevel(self.root)
                 dialog.title("Enter Program Number for Imported Patch")
-                tk.Label(dialog, text="Program Number (0-127):").pack(padx=10, pady=5)
-                prog_var = tk.IntVar(value=0)
-                spin = ttk.Spinbox(dialog, from_=0, to=127, textvariable=prog_var, width=10)
+                tk.Label(dialog, text="Program Number (1-128):").pack(padx=10, pady=5)
+                prog_var = tk.IntVar(value=program_to_display(0))
+                spin = ttk.Spinbox(dialog, from_=1, to=128, textvariable=prog_var, width=10)
                 spin.pack(padx=10, pady=5)
                 def on_ok():
-                    new_prog = prog_var.get()
+                    new_prog = display_to_program(prog_var.get())
                     # 既存番号チェック
                     if any(p.get("program", -1) == new_prog for p in self.patch_data["patches"]):
-                        if not messagebox.askyesno("Warning", f"Program number {new_prog} already exists. Proceed with overwrite?"):
+                        if not messagebox.askyesno("Warning", f"Program number {program_to_display(new_prog)} already exists. Proceed with overwrite?"):
                             dialog.destroy()
                             return
                     new_patch["program"] = new_prog
@@ -500,8 +510,8 @@ class PatchEditor:
         
         # プログラム番号
         ttk.Label(info_frame, text="Program number:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=2)
-        self.program_var = tk.IntVar()
-        self.program_spinbox = ttk.Spinbox(info_frame, from_=0, to=127, textvariable=self.program_var,
+        self.program_var = tk.IntVar(value=program_to_display(0))
+        self.program_spinbox = ttk.Spinbox(info_frame, from_=1, to=128, textvariable=self.program_var,
                                           command=self.on_value_change, width=10)
         self.program_spinbox.grid(row=0, column=1, padx=5, pady=2)
         self.program_spinbox.bind('<Return>', self.on_value_change)
@@ -695,8 +705,7 @@ class PatchEditor:
         self.patch_listbox.delete(0, tk.END)
         for patch in self.patch_data.get("patches", []):
             program = patch.get("program", 0)
-            name = GM_INSTRUMENT_NAMES.get(program, f"Unknown ({program})")
-            self.patch_listbox.insert(tk.END, f"{program:3d}: {name}")
+            self.patch_listbox.insert(tk.END, f"{program_to_display(program):3d}: {instrument_name(program)}")
     
     def on_patch_select(self, event):
         selection = self.patch_listbox.curselection()
@@ -713,16 +722,14 @@ class PatchEditor:
         self._loading_patch = True
         
         # 基本情報をUIに反映
-        self.program_var.set(self.current_patch.get("program", 0))
+        self.program_var.set(program_to_display(self.current_patch.get("program", 0)))
         self.modmode_var.set(self.current_patch.get("modmode", 4))
         self.feedback_var.set(self.current_patch.get("feedback", 128))
         self.keyshift_var.set(self.current_patch.get("keyShift", 0))
         self.fbdest_var.set(FB_DEST_CHOICES[clamp_fb_dest(self.current_patch.get("fbDest", 0))])
         
         # 楽器名を更新
-        program = self.program_var.get()
-        name = GM_INSTRUMENT_NAMES.get(program, f"Unknown ({program})")
-        self.instrument_label.config(text=name)
+        self.instrument_label.config(text=instrument_name(self.current_patch.get("program", 0)))
         
         # 現在選択されているオペレーターの値を更新
         self.load_operator_to_ui()
@@ -768,7 +775,7 @@ class PatchEditor:
             return
             
         # 基本パラメーターを更新
-        self.current_patch["program"] = self.program_var.get()
+        self.current_patch["program"] = display_to_program(self.program_var.get())
         self.current_patch["modmode"] = self.modmode_var.get()
         self.current_patch["feedback"] = self.feedback_var.get()
         self.current_patch["keyShift"] = self.keyshift_var.get()
@@ -776,9 +783,7 @@ class PatchEditor:
             self.current_patch["fbDest"] = FB_DEST_CHOICES.index(self.fbdest_var.get())
         
         # 楽器名を更新
-        program = self.program_var.get()
-        name = GM_INSTRUMENT_NAMES.get(program, f"Unknown ({program})")
-        self.instrument_label.config(text=name)
+        self.instrument_label.config(text=instrument_name(self.current_patch.get("program", 0)))
         
         # パッチリストを更新
         self.update_patch_list()
@@ -856,7 +861,8 @@ class PatchEditor:
             self.current_patch = None
             
             # UIをクリア
-            for var in [self.program_var, self.modmode_var, self.feedback_var, self.keyshift_var]:
+            self.program_var.set(program_to_display(0))
+            for var in [self.modmode_var, self.feedback_var, self.keyshift_var]:
                 var.set(0)
             self.fbdest_var.set(FB_DEST_CHOICES[0])
             for var in self.operator_vars.values():
